@@ -36,6 +36,14 @@ func TestSQLiteSessionRepositoryPersistsSession(t *testing.T) {
 	if stored != session {
 		t.Fatalf("GetByID() = %#v, want %#v", stored, session)
 	}
+
+	stored, err = repository.GetByIdempotencyKey(context.Background(), session.OwnerID, session.IdempotencyKey)
+	if err != nil {
+		t.Fatalf("GetByIdempotencyKey() error = %v", err)
+	}
+	if stored != session {
+		t.Fatalf("GetByIdempotencyKey() = %#v, want %#v", stored, session)
+	}
 }
 
 func TestSQLiteSessionRepositoryReturnsMissingSession(t *testing.T) {
@@ -66,16 +74,17 @@ func TestSQLiteSessionRepositoryRejectsInvalidSession(t *testing.T) {
 
 func validSession() UploadSession {
 	return UploadSession{
-		ID:           "opaque-upload-id",
-		OwnerID:      "local-demo-user",
-		DisplayName:  "synthetic-document.pdf",
-		BlobName:     "opaque-upload-id.pdf",
-		DeclaredSize: 1024,
-		Extension:    ".pdf",
-		ContentType:  "application/pdf",
-		CreatedAt:    time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC),
-		ExpiresAt:    time.Date(2026, time.November, 22, 12, 10, 0, 0, time.UTC),
-		Status:       SessionInitiated,
-		Version:      1,
+		ID:             "opaque-upload-id",
+		OwnerID:        "local-demo-user",
+		DisplayName:    "synthetic-document.pdf",
+		BlobName:       "opaque-upload-id.pdf",
+		DeclaredSize:   1024,
+		Extension:      ".pdf",
+		ContentType:    "application/pdf",
+		IdempotencyKey: "test-key",
+		CreatedAt:      time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC),
+		ExpiresAt:      time.Date(2026, time.November, 22, 12, 10, 0, 0, time.UTC),
+		Status:         SessionInitiated,
+		Version:        1,
 	}
 }

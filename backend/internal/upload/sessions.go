@@ -21,27 +21,30 @@ const (
 )
 
 var (
-	ErrSessionNotFound = errors.New("upload session not found")
-	ErrInvalidSession  = errors.New("invalid upload session")
+	ErrSessionNotFound     = errors.New("upload session not found")
+	ErrInvalidSession      = errors.New("invalid upload session")
+	ErrIdempotencyConflict = errors.New("upload idempotency conflict")
 )
 
 type UploadSession struct {
-	ID           string
-	OwnerID      string
-	DisplayName  string
-	BlobName     string
-	DeclaredSize int64
-	Extension    string
-	ContentType  string
-	CreatedAt    time.Time
-	ExpiresAt    time.Time
-	Status       SessionStatus
-	Version      int64
+	ID             string
+	OwnerID        string
+	DisplayName    string
+	BlobName       string
+	DeclaredSize   int64
+	Extension      string
+	ContentType    string
+	IdempotencyKey string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	Status         SessionStatus
+	Version        int64
 }
 
 type SessionRepository interface {
 	Create(ctx context.Context, session UploadSession) error
 	GetByID(ctx context.Context, id string) (UploadSession, error)
+	GetByIdempotencyKey(ctx context.Context, ownerID string, key string) (UploadSession, error)
 }
 
 func (s SessionStatus) CanTransitionTo(next SessionStatus) bool {
