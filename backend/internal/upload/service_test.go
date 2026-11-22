@@ -23,6 +23,12 @@ type fakeSessionRepository struct {
 	getByIDErr  error
 }
 
+type fakeBlobInspector struct {
+	properties BlobProperties
+	err        error
+	blobName   string
+}
+
 func (f *fakeSessionRepository) Create(_ context.Context, session UploadSession) error {
 	f.createCalls++
 	f.created = session
@@ -49,17 +55,31 @@ func (f *fakeSessionRepository) GetByIdempotencyKey(_ context.Context, _ string,
 	return UploadSession{}, ErrSessionNotFound
 }
 
+func (f *fakeSessionRepository) UpdateStatus(_ context.Context, _ string, version int64, status SessionStatus) (UploadSession, error) {
+	if f.byID.Version != version {
+		return UploadSession{}, ErrSessionVersionConflict
+	}
+	f.byID.Status = status
+	f.byID.Version++
+	return f.byID, nil
+}
+
 func (f *fakeSigner) GenerateUploadURL(blobName string, expiresAt time.Time) (string, error) {
 	f.blobName = blobName
 	f.expires = expiresAt
 	return f.url, f.err
 }
 
+func (f *fakeBlobInspector) GetBlobProperties(_ context.Context, blobName string) (BlobProperties, error) {
+	f.blobName = blobName
+	return f.properties, f.err
+}
+
 func TestServiceInitiate(t *testing.T) {
 	now := time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC)
 	signer := &fakeSigner{url: "https://storage.invalid/upload"}
 	sessions := &fakeSessionRepository{}
-	service := NewService(signer, sessions)
+	service := NewService(signer, &fakeBlobInspector{}, sessions)
 	service.now = func() time.Time { return now }
 	service.newID = func() (string, error) { return "opaque-id", nil }
 
@@ -83,7 +103,7 @@ func TestServiceInitiate(t *testing.T) {
 }
 
 func TestServiceInitiateReturnsValidationError(t *testing.T) {
-	service := NewService(&fakeSigner{}, &fakeSessionRepository{})
+	service := NewService(&fakeSigner{}, &fakeBlobInspector{}, &fakeSessionRepository{})
 
 	_, err := service.Initiate(context.Background(), "demo-user", "test-key", "passport.exe", 1024)
 	if !errors.Is(err, ErrUnsupportedType) {
@@ -100,7 +120,7 @@ func TestServiceInitiateReusesActiveSession(t *testing.T) {
 		ExpiresAt: now.Add(URLLifetime),
 		Status:    SessionInitiated,
 	}}
-	service := NewService(signer, sessions)
+	service := NewService(signer, &fakeBlobInspector{}, sessions)
 	service.now = func() time.Time { return now }
 
 	result, err := service.Initiate(context.Background(), "demo-user", "test-key", "passport.pdf", 1024)
@@ -116,10 +136,61 @@ func TestServiceInitiateReusesActiveSession(t *testing.T) {
 }
 
 func TestServiceGetRejectsAnotherOwner(t *testing.T) {
-	service := NewService(&fakeSigner{}, &fakeSessionRepository{byID: UploadSession{ID: "upload-id", OwnerID: "other-user"}})
+	service := NewService(&fakeSigner{}, &fakeBlobInspector{}, &fakeSessionRepository{byID: UploadSession{ID: "upload-id", OwnerID: "other-user"}})
 
 	_, err := service.Get(context.Background(), "demo-user", "upload-id")
 	if !errors.Is(err, ErrSessionForbidden) {
 		t.Fatalf("Get() error = %v, want %v", err, ErrSessionForbidden)
+	}
+}
+
+func TestServiceCompleteMarksMatchingBlobUploaded(t *testing.T) {
+	now := time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC)
+	session := validSession()
+	session.ExpiresAt = now.Add(URLLifetime)
+	sessions := &fakeSessionRepository{byID: session}
+	inspector := &fakeBlobInspector{properties: BlobProperties{Size: session.DeclaredSize}}
+	service := NewService(&fakeSigner{}, inspector, sessions)
+	service.now = func() time.Time { return now }
+
+	result, err := service.Complete(context.Background(), session.OwnerID, session.ID)
+	if err != nil {
+		t.Fatalf("Complete() error = %v", err)
+	}
+	if result.Status != SessionUploaded {
+		t.Fatalf("status = %q, want %q", result.Status, SessionUploaded)
+	}
+	if inspector.blobName != session.BlobName {
+		t.Fatalf("inspected blob = %q, want %q", inspector.blobName, session.BlobName)
+	}
+}
+
+func TestServiceCompleteRejectsMissingOrMismatchedBlob(t *testing.T) {
+	now := time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		inspector fakeBlobInspector
+		wantErr   error
+	}{
+		{name: "missing blob", inspector: fakeBlobInspector{err: ErrBlobNotFound}, wantErr: ErrBlobNotFound},
+		{name: "wrong size", inspector: fakeBlobInspector{properties: BlobProperties{Size: 1}}, wantErr: ErrBlobSizeMismatch},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			session := validSession()
+			session.ExpiresAt = now.Add(URLLifetime)
+			sessions := &fakeSessionRepository{byID: session}
+			service := NewService(&fakeSigner{}, &test.inspector, sessions)
+			service.now = func() time.Time { return now }
+
+			_, err := service.Complete(context.Background(), session.OwnerID, session.ID)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("Complete() error = %v, want %v", err, test.wantErr)
+			}
+			if test.wantErr == ErrBlobSizeMismatch && sessions.byID.Status != SessionRejected {
+				t.Fatalf("status = %q, want %q", sessions.byID.Status, SessionRejected)
+			}
+		})
 	}
 }

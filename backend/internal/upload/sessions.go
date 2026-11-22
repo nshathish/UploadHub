@@ -21,9 +21,10 @@ const (
 )
 
 var (
-	ErrSessionNotFound     = errors.New("upload session not found")
-	ErrInvalidSession      = errors.New("invalid upload session")
-	ErrIdempotencyConflict = errors.New("upload idempotency conflict")
+	ErrSessionNotFound        = errors.New("upload session not found")
+	ErrInvalidSession         = errors.New("invalid upload session")
+	ErrIdempotencyConflict    = errors.New("upload idempotency conflict")
+	ErrSessionVersionConflict = errors.New("upload session version conflict")
 )
 
 type UploadSession struct {
@@ -45,11 +46,12 @@ type SessionRepository interface {
 	Create(ctx context.Context, session UploadSession) error
 	GetByID(ctx context.Context, id string) (UploadSession, error)
 	GetByIdempotencyKey(ctx context.Context, ownerID string, key string) (UploadSession, error)
+	UpdateStatus(ctx context.Context, id string, version int64, status SessionStatus) (UploadSession, error)
 }
 
 func (s SessionStatus) CanTransitionTo(next SessionStatus) bool {
 	allowed := map[SessionStatus][]SessionStatus{
-		SessionInitiated:  {SessionUploading, SessionCanceled, SessionExpired, SessionFailed},
+		SessionInitiated:  {SessionUploading, SessionUploaded, SessionRejected, SessionCanceled, SessionExpired, SessionFailed},
 		SessionUploading:  {SessionUploaded, SessionCanceled, SessionExpired, SessionFailed},
 		SessionUploaded:   {SessionValidating, SessionCanceled, SessionExpired, SessionFailed},
 		SessionValidating: {SessionAccepted, SessionRejected, SessionFailed},

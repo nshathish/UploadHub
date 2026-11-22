@@ -84,6 +84,27 @@ func (r *SQLiteSessionRepository) GetByIdempotencyKey(ctx context.Context, owner
 	return scanSession(row)
 }
 
+func (r *SQLiteSessionRepository) UpdateStatus(ctx context.Context, id string, version int64, status SessionStatus) (UploadSession, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE upload_sessions
+		SET status = ?, version = version + 1
+		WHERE id = ? AND version = ?
+	`, status, id, version)
+	if err != nil {
+		return UploadSession{}, fmt.Errorf("update upload session status: %w", err)
+	}
+
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return UploadSession{}, fmt.Errorf("read upload session update result: %w", err)
+	}
+	if updated == 0 {
+		return UploadSession{}, ErrSessionVersionConflict
+	}
+
+	return r.GetByID(ctx, id)
+}
+
 func scanSession(row *sql.Row) (UploadSession, error) {
 	var session UploadSession
 	var createdAt string
