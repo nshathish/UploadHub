@@ -19,6 +19,7 @@ var (
 	ErrMissingIdempotencyKey = errors.New("missing idempotency key")
 	ErrCreateSession         = errors.New("create upload session")
 	ErrGetIdempotentSession  = errors.New("get idempotent upload session")
+	ErrSessionForbidden      = errors.New("upload session access denied")
 )
 
 type URLSigner interface {
@@ -30,6 +31,14 @@ type InitiateResult struct {
 	BlobName  string    `json:"blobName"`
 	UploadURL string    `json:"uploadUrl"`
 	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+type SessionResult struct {
+	ID        string        `json:"id"`
+	FileName  string        `json:"fileName"`
+	Size      int64         `json:"size"`
+	Status    SessionStatus `json:"status"`
+	ExpiresAt time.Time     `json:"expiresAt"`
 }
 
 type Service struct {
@@ -115,6 +124,31 @@ func (s *Service) Initiate(ctx context.Context, ownerID string, idempotencyKey s
 		BlobName:  blobName,
 		UploadURL: uploadURL,
 		ExpiresAt: expiresAt,
+	}, nil
+}
+
+func (s *Service) Get(ctx context.Context, ownerID string, id string) (SessionResult, error) {
+	if ownerID == "" {
+		return SessionResult{}, ErrMissingOwner
+	}
+	if s.sessions == nil {
+		return SessionResult{}, ErrMissingRepository
+	}
+
+	session, err := s.sessions.GetByID(ctx, id)
+	if err != nil {
+		return SessionResult{}, err
+	}
+	if session.OwnerID != ownerID {
+		return SessionResult{}, ErrSessionForbidden
+	}
+
+	return SessionResult{
+		ID:        session.ID,
+		FileName:  session.DisplayName,
+		Size:      session.DeclaredSize,
+		Status:    session.Status,
+		ExpiresAt: session.ExpiresAt,
 	}, nil
 }
 
