@@ -1,0 +1,19 @@
+@apiBaseUrl = http://localhost:8080
+
+### Initiate direct upload
+POST {{apiBaseUrl}}/api/uploads/initiate
+Content-Type: application/json
+
+{
+  "fileName": "synthetic-document.pdf",
+  "size": 1024
+}
+
+### Reject unsupported file type
+POST {{apiBaseUrl}}/api/uploads/initiate
+Content-Type: application/json
+
+{
+  "fileName": "synthetic-document.exe",
+  "size": 1024
+}

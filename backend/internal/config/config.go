@@ -1,8 +1,16 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
+
+	"github.com/joho/godotenv"
+)
+
+var (
+	ErrLoadEnvironment               = errors.New("load environment")
+	ErrMissingAzureStorageConnection = errors.New("missing Azure Storage connection string")
 )
 
 type Config struct {
@@ -12,9 +20,13 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		return Config{}, fmt.Errorf("%w: %w", ErrLoadEnvironment, err)
+	}
+
 	connectionString := os.Getenv("AZURE_STORAGE_CONNECTION_STRING")
 	if connectionString == "" {
-		return Config{}, fmt.Errorf("AZURE_STORAGE_CONNECTION_STRING is required")
+		return Config{}, ErrMissingAzureStorageConnection
 	}
 
 	return Config{

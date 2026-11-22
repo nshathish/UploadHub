@@ -14,7 +14,7 @@ type fakeSigner struct {
 	expires  time.Time
 }
 
-func (f *fakeSigner) GenerateUploadURL(_ context.Context, blobName string, expiresAt time.Time) (string, error) {
+func (f *fakeSigner) GenerateUploadURL(blobName string, expiresAt time.Time) (string, error) {
 	f.blobName = blobName
 	f.expires = expiresAt
 	return f.url, f.err

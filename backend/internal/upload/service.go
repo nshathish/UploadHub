@@ -4,14 +4,20 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 )
 
 const URLLifetime = 10 * time.Minute
 
+var (
+	ErrGenerateUploadURL = errors.New("generate upload URL")
+	ErrGenerateID        = errors.New("generate upload ID")
+)
+
 type URLSigner interface {
-	GenerateUploadURL(ctx context.Context, blobName string, expiresAt time.Time) (string, error)
+	GenerateUploadURL(blobName string, expiresAt time.Time) (string, error)
 }
 
 type InitiateResult struct {
@@ -48,9 +54,9 @@ func (s *Service) Initiate(ctx context.Context, fileName string, size int64) (In
 
 	expiresAt := s.now().UTC().Add(URLLifetime)
 	blobName := id + file.Extension
-	uploadURL, err := s.signer.GenerateUploadURL(ctx, blobName, expiresAt)
+	uploadURL, err := s.signer.GenerateUploadURL(blobName, expiresAt)
 	if err != nil {
-		return InitiateResult{}, fmt.Errorf("generate upload URL: %w", err)
+		return InitiateResult{}, fmt.Errorf("%w: %w", ErrGenerateUploadURL, err)
 	}
 
 	return InitiateResult{
@@ -64,7 +70,7 @@ func (s *Service) Initiate(ctx context.Context, fileName string, size int64) (In
 func newID() (string, error) {
 	var bytes [16]byte
 	if _, err := rand.Read(bytes[:]); err != nil {
-		return "", fmt.Errorf("generate upload ID: %w", err)
+		return "", fmt.Errorf("%w: %w", ErrGenerateID, err)
 	}
 
 	return hex.EncodeToString(bytes[:]), nil

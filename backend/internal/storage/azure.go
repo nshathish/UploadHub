@@ -1,12 +1,19 @@
 package storage
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+)
+
+var (
+	ErrMissingConnectionString = errors.New("missing Azure Storage connection string")
+	ErrMissingContainerName    = errors.New("missing Azure Storage container name")
+	ErrCreateBlobClient        = errors.New("create Azure Blob client")
+	ErrGenerateSASURL          = errors.New("generate Azure Blob SAS URL")
 )
 
 type AzureBlobSigner struct {
@@ -16,10 +23,10 @@ type AzureBlobSigner struct {
 
 func NewAzureBlobSigner(connectionString string, containerName string) (*AzureBlobSigner, error) {
 	if connectionString == "" {
-		return nil, fmt.Errorf("Azure Storage connection string is required")
+		return nil, ErrMissingConnectionString
 	}
 	if containerName == "" {
-		return nil, fmt.Errorf("Azure Storage container name is required")
+		return nil, ErrMissingContainerName
 	}
 
 	return &AzureBlobSigner{
@@ -28,16 +35,16 @@ func NewAzureBlobSigner(connectionString string, containerName string) (*AzureBl
 	}, nil
 }
 
-func (s *AzureBlobSigner) GenerateUploadURL(_ context.Context, blobName string, expiresAt time.Time) (string, error) {
+func (s *AzureBlobSigner) GenerateUploadURL(blobName string, expiresAt time.Time) (string, error) {
 	client, err := blob.NewClientFromConnectionString(s.connectionString, s.containerName, blobName, nil)
 	if err != nil {
-		return "", fmt.Errorf("create Azure Blob client: %w", err)
+		return "", fmt.Errorf("%w: %w", ErrCreateBlobClient, err)
 	}
 
 	startTime := time.Now().UTC().Add(-5 * time.Minute)
 	uploadURL, err := client.GetSASURL(sas.BlobPermissions{Create: true}, expiresAt, &blob.GetSASURLOptions{StartTime: &startTime})
 	if err != nil {
-		return "", fmt.Errorf("generate Azure Blob SAS URL: %w", err)
+		return "", fmt.Errorf("%w: %w", ErrGenerateSASURL, err)
 	}
 
 	return uploadURL, nil
