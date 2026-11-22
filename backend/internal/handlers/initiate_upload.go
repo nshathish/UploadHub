@@ -12,7 +12,7 @@ import (
 )
 
 type UploadInitiator interface {
-	Initiate(ctx context.Context, fileName string, size int64) (upload.InitiateResult, error)
+	Initiate(ctx context.Context, ownerID string, fileName string, size int64) (upload.InitiateResult, error)
 }
 
 type InitiateUploadRequest struct {
@@ -44,7 +44,13 @@ func NewInitiateUploadHandler(service UploadInitiator) http.HandlerFunc {
 			return
 		}
 
-		result, err := service.Initiate(r.Context(), request.FileName, request.Size)
+		ownerID, ok := OwnerID(r.Context())
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		result, err := service.Initiate(r.Context(), ownerID, request.FileName, request.Size)
 		if err != nil {
 			switch {
 			case errors.Is(err, upload.ErrInvalidFileName), errors.Is(err, upload.ErrInvalidFileSize):

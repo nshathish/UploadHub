@@ -22,13 +22,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	sessions, err := upload.NewSQLiteSessionRepository(cfg.UploadDatabasePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sessions.Close()
+
 	mux := http.NewServeMux()
 	mux.Handle(
 		"POST /api/uploads/initiate",
 		handlers.DevelopmentAuth(
 			cfg.DevelopmentAuthToken,
 			cfg.DevelopmentOwnerID,
-			handlers.NewInitiateUploadHandler(upload.NewService(signer)),
+			handlers.NewInitiateUploadHandler(upload.NewService(signer, sessions)),
 		),
 	)
 
