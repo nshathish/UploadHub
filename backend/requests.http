@@ -1,8 +1,10 @@
 @apiBaseUrl = http://localhost:8080
+@developmentToken = local-development-token
 
 ### Initiate direct upload
 POST {{apiBaseUrl}}/api/uploads/initiate
 Content-Type: application/json
+Authorization: Bearer {{developmentToken}}
 
 {
   "fileName": "synthetic-document.pdf",
@@ -12,6 +14,7 @@ Content-Type: application/json
 ### Reject unsupported file type
 POST {{apiBaseUrl}}/api/uploads/initiate
 Content-Type: application/json
+Authorization: Bearer {{developmentToken}}
 
 {
   "fileName": "synthetic-document.exe",

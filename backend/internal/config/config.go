@@ -17,6 +17,8 @@ type Config struct {
 	Port                  string
 	AzureConnectionString string
 	AzureContainerName    string
+	DevelopmentAuthToken  string
+	DevelopmentOwnerID    string
 }
 
 func Load() (Config, error) {
@@ -33,6 +35,8 @@ func Load() (Config, error) {
 		Port:                  valueOrDefault("APP_PORT", "8080"),
 		AzureConnectionString: connectionString,
 		AzureContainerName:    valueOrDefault("AZURE_STORAGE_CONTAINER", "kyc-documents"),
+		DevelopmentAuthToken:  valueOrDefault("UPLOADHUB_DEV_AUTH_TOKEN", "local-development-token"),
+		DevelopmentOwnerID:    valueOrDefault("UPLOADHUB_DEV_OWNER_ID", "local-demo-user"),
 	}, nil
 }
 
