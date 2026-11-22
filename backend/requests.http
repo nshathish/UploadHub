@@ -1,7 +1,6 @@
 @apiBaseUrl = http://localhost:8080
 @developmentToken = local-development-token
-@idempotencyKey = 7adf6d2c-9850-4c16-a7e9-7d0c24ac8b04
-@uploadId = replace-with-upload-id
+@idempotencyKey = {{$uuid}}
 
 ### Initiate direct upload
 POST {{apiBaseUrl}}/api/uploads/initiate
@@ -13,6 +12,16 @@ Idempotency-Key: {{idempotencyKey}}
   "fileName": "synthetic-document.pdf",
   "size": 1024
 }
+
+> {%
+if (response.status !== 201) {
+  client.log("initiation failed with HTTP " + response.status);
+} else {
+  const payload = typeof response.body === "string" ? JSON.parse(response.body) : response.body;
+  client.global.set("uploadId", payload.id);
+  client.log("uploadId: " + payload.id);
+}
+%}
 
 ### Reject unsupported file type
 POST {{apiBaseUrl}}/api/uploads/initiate
