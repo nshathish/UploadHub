@@ -19,6 +19,8 @@ type fakeSessionRepository struct {
 	existing    UploadSession
 	err         error
 	createCalls int
+	byID        UploadSession
+	getByIDErr  error
 }
 
 func (f *fakeSessionRepository) Create(_ context.Context, session UploadSession) error {
@@ -28,7 +30,13 @@ func (f *fakeSessionRepository) Create(_ context.Context, session UploadSession)
 }
 
 func (f *fakeSessionRepository) GetByID(_ context.Context, _ string) (UploadSession, error) {
-	return UploadSession{}, ErrSessionNotFound
+	if f.getByIDErr != nil {
+		return UploadSession{}, f.getByIDErr
+	}
+	if f.byID.ID == "" {
+		return UploadSession{}, ErrSessionNotFound
+	}
+	return f.byID, nil
 }
 
 func (f *fakeSessionRepository) GetByIdempotencyKey(_ context.Context, _ string, _ string) (UploadSession, error) {
@@ -104,5 +112,14 @@ func TestServiceInitiateReusesActiveSession(t *testing.T) {
 	}
 	if sessions.createCalls != 0 {
 		t.Fatalf("Create() calls = %d, want 0", sessions.createCalls)
+	}
+}
+
+func TestServiceGetRejectsAnotherOwner(t *testing.T) {
+	service := NewService(&fakeSigner{}, &fakeSessionRepository{byID: UploadSession{ID: "upload-id", OwnerID: "other-user"}})
+
+	_, err := service.Get(context.Background(), "demo-user", "upload-id")
+	if !errors.Is(err, ErrSessionForbidden) {
+		t.Fatalf("Get() error = %v, want %v", err, ErrSessionForbidden)
 	}
 }

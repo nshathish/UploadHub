@@ -37,6 +37,14 @@ func main() {
 			handlers.NewInitiateUploadHandler(upload.NewService(signer, sessions)),
 		),
 	)
+	mux.Handle(
+		"GET /api/uploads/{id}",
+		handlers.DevelopmentAuth(
+			cfg.DevelopmentAuthToken,
+			cfg.DevelopmentOwnerID,
+			handlers.NewGetUploadHandler(upload.NewService(signer, sessions)),
+		),
+	)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

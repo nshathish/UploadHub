@@ -1,6 +1,7 @@
 @apiBaseUrl = http://localhost:8080
 @developmentToken = local-development-token
 @idempotencyKey = 7adf6d2c-9850-4c16-a7e9-7d0c24ac8b04
+@uploadId = replace-with-upload-id
 
 ### Initiate direct upload
 POST {{apiBaseUrl}}/api/uploads/initiate
@@ -23,3 +24,7 @@ Idempotency-Key: {{idempotencyKey}}
   "fileName": "synthetic-document.exe",
   "size": 1024
 }
+
+### Get upload status
+GET {{apiBaseUrl}}/api/uploads/{{uploadId}}
+Authorization: Bearer {{developmentToken}}
