@@ -23,7 +23,14 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("POST /api/uploads/initiate", handlers.NewInitiateUploadHandler(upload.NewService(signer)))
+	mux.Handle(
+		"POST /api/uploads/initiate",
+		handlers.DevelopmentAuth(
+			cfg.DevelopmentAuthToken,
+			cfg.DevelopmentOwnerID,
+			handlers.NewInitiateUploadHandler(upload.NewService(signer)),
+		),
+	)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
