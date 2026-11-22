@@ -12,11 +12,13 @@ import (
 const URLLifetime = 10 * time.Minute
 
 var (
-	ErrGenerateUploadURL = errors.New("generate upload URL")
-	ErrGenerateID        = errors.New("generate upload ID")
-	ErrMissingOwner      = errors.New("missing upload owner")
-	ErrMissingRepository = errors.New("missing upload session repository")
-	ErrCreateSession     = errors.New("create upload session")
+	ErrGenerateUploadURL     = errors.New("generate upload URL")
+	ErrGenerateID            = errors.New("generate upload ID")
+	ErrMissingOwner          = errors.New("missing upload owner")
+	ErrMissingRepository     = errors.New("missing upload session repository")
+	ErrMissingIdempotencyKey = errors.New("missing idempotency key")
+	ErrCreateSession         = errors.New("create upload session")
+	ErrGetIdempotentSession  = errors.New("get idempotent upload session")
 )
 
 type URLSigner interface {
@@ -46,12 +48,15 @@ func NewService(signer URLSigner, sessions SessionRepository) *Service {
 	}
 }
 
-func (s *Service) Initiate(ctx context.Context, ownerID string, fileName string, size int64) (InitiateResult, error) {
+func (s *Service) Initiate(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (InitiateResult, error) {
 	if ownerID == "" {
 		return InitiateResult{}, ErrMissingOwner
 	}
 	if s.sessions == nil {
 		return InitiateResult{}, ErrMissingRepository
+	}
+	if idempotencyKey == "" {
+		return InitiateResult{}, ErrMissingIdempotencyKey
 	}
 
 	file, err := ValidateInitiate(fileName, size)
@@ -59,26 +64,43 @@ func (s *Service) Initiate(ctx context.Context, ownerID string, fileName string,
 		return InitiateResult{}, err
 	}
 
+	now := s.now().UTC()
+	existing, err := s.sessions.GetByIdempotencyKey(ctx, ownerID, idempotencyKey)
+	if err == nil {
+		if existing.Status != SessionInitiated || !now.Before(existing.ExpiresAt) {
+			return InitiateResult{}, ErrIdempotencyConflict
+		}
+		uploadURL, signingErr := s.signer.GenerateUploadURL(existing.BlobName, existing.ExpiresAt)
+		if signingErr != nil {
+			return InitiateResult{}, fmt.Errorf("%w: %w", ErrGenerateUploadURL, signingErr)
+		}
+		return InitiateResult{ID: existing.ID, BlobName: existing.BlobName, UploadURL: uploadURL, ExpiresAt: existing.ExpiresAt}, nil
+	}
+	if !errors.Is(err, ErrSessionNotFound) {
+		return InitiateResult{}, fmt.Errorf("%w: %w", ErrGetIdempotentSession, err)
+	}
+
 	id, err := s.newID()
 	if err != nil {
 		return InitiateResult{}, err
 	}
 
-	createdAt := s.now().UTC()
-	expiresAt := createdAt.Add(URLLifetime)
+	createdAt := now
+	expiresAt := now.Add(URLLifetime)
 	blobName := id + file.Extension
 	if err := s.sessions.Create(ctx, UploadSession{
-		ID:           id,
-		OwnerID:      ownerID,
-		DisplayName:  file.Name,
-		BlobName:     blobName,
-		DeclaredSize: file.Size,
-		Extension:    file.Extension,
-		ContentType:  file.ContentType,
-		CreatedAt:    createdAt,
-		ExpiresAt:    expiresAt,
-		Status:       SessionInitiated,
-		Version:      1,
+		ID:             id,
+		OwnerID:        ownerID,
+		DisplayName:    file.Name,
+		BlobName:       blobName,
+		DeclaredSize:   file.Size,
+		Extension:      file.Extension,
+		ContentType:    file.ContentType,
+		IdempotencyKey: idempotencyKey,
+		CreatedAt:      createdAt,
+		ExpiresAt:      expiresAt,
+		Status:         SessionInitiated,
+		Version:        1,
 	}); err != nil {
 		return InitiateResult{}, fmt.Errorf("%w: %w", ErrCreateSession, err)
 	}

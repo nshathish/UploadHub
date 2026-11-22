@@ -12,7 +12,7 @@ import (
 )
 
 type UploadInitiator interface {
-	Initiate(ctx context.Context, ownerID string, fileName string, size int64) (upload.InitiateResult, error)
+	Initiate(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (upload.InitiateResult, error)
 }
 
 type InitiateUploadRequest struct {
@@ -49,14 +49,21 @@ func NewInitiateUploadHandler(service UploadInitiator) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		idempotencyKey := r.Header.Get("Idempotency-Key")
+		if idempotencyKey == "" {
+			http.Error(w, "idempotency key is required", http.StatusBadRequest)
+			return
+		}
 
-		result, err := service.Initiate(r.Context(), ownerID, request.FileName, request.Size)
+		result, err := service.Initiate(r.Context(), ownerID, idempotencyKey, request.FileName, request.Size)
 		if err != nil {
 			switch {
 			case errors.Is(err, upload.ErrInvalidFileName), errors.Is(err, upload.ErrInvalidFileSize):
 				http.Error(w, "invalid upload request", http.StatusBadRequest)
 			case errors.Is(err, upload.ErrUnsupportedType):
 				http.Error(w, "unsupported file type", http.StatusUnsupportedMediaType)
+			case errors.Is(err, upload.ErrIdempotencyConflict):
+				http.Error(w, "idempotency key cannot be reused", http.StatusConflict)
 			default:
 				http.Error(w, "unable to initiate upload", http.StatusInternalServerError)
 			}
