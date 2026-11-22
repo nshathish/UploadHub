@@ -17,7 +17,7 @@ type fakeUploadInitiator struct {
 	calls  int
 }
 
-func (f *fakeUploadInitiator) Initiate(_ context.Context, _ string, _ int64) (upload.InitiateResult, error) {
+func (f *fakeUploadInitiator) Initiate(_ context.Context, _ string, _ string, _ int64) (upload.InitiateResult, error) {
 	f.calls++
 	return f.result, f.err
 }
@@ -40,6 +40,7 @@ func TestInitiateUploadHandler(t *testing.T) {
 			fake := &fakeUploadInitiator{result: upload.InitiateResult{ID: "opaque-id", BlobName: "opaque-id.pdf", UploadURL: "https://storage.invalid/upload", ExpiresAt: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)}}
 			request := httptest.NewRequest(http.MethodPost, "/api/uploads/initiate", strings.NewReader(test.body))
 			request.Header.Set("Content-Type", test.contentType)
+			request = request.WithContext(context.WithValue(request.Context(), ownerContextKey{}, "demo-user"))
 			recorder := httptest.NewRecorder()
 
 			NewInitiateUploadHandler(fake).ServeHTTP(recorder, request)
