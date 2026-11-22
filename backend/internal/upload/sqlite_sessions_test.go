@@ -44,6 +44,14 @@ func TestSQLiteSessionRepositoryPersistsSession(t *testing.T) {
 	if stored != session {
 		t.Fatalf("GetByIdempotencyKey() = %#v, want %#v", stored, session)
 	}
+
+	updated, err := repository.UpdateStatus(context.Background(), session.ID, session.Version, SessionUploaded)
+	if err != nil {
+		t.Fatalf("UpdateStatus() error = %v", err)
+	}
+	if updated.Status != SessionUploaded || updated.Version != session.Version+1 {
+		t.Fatalf("UpdateStatus() = %#v", updated)
+	}
 }
 
 func TestSQLiteSessionRepositoryReturnsMissingSession(t *testing.T) {

@@ -1,12 +1,16 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+	"github.com/nshathish/uploadhub/backend/internal/upload"
 )
 
 var (
@@ -14,14 +18,16 @@ var (
 	ErrMissingContainerName    = errors.New("missing Azure Storage container name")
 	ErrCreateBlobClient        = errors.New("create Azure Blob client")
 	ErrGenerateSASURL          = errors.New("generate Azure Blob SAS URL")
+	ErrGetBlobProperties       = errors.New("get Azure Blob properties")
+	ErrInvalidBlobProperties   = errors.New("invalid Azure Blob properties")
 )
 
-type AzureBlobSigner struct {
+type AzureBlobStorage struct {
 	connectionString string
 	containerName    string
 }
 
-func NewAzureBlobSigner(connectionString string, containerName string) (*AzureBlobSigner, error) {
+func NewAzureBlobStorage(connectionString string, containerName string) (*AzureBlobStorage, error) {
 	if connectionString == "" {
 		return nil, ErrMissingConnectionString
 	}
@@ -29,13 +35,13 @@ func NewAzureBlobSigner(connectionString string, containerName string) (*AzureBl
 		return nil, ErrMissingContainerName
 	}
 
-	return &AzureBlobSigner{
+	return &AzureBlobStorage{
 		connectionString: connectionString,
 		containerName:    containerName,
 	}, nil
 }
 
-func (s *AzureBlobSigner) GenerateUploadURL(blobName string, expiresAt time.Time) (string, error) {
+func (s *AzureBlobStorage) GenerateUploadURL(blobName string, expiresAt time.Time) (string, error) {
 	client, err := blob.NewClientFromConnectionString(s.connectionString, s.containerName, blobName, nil)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrCreateBlobClient, err)
@@ -48,4 +54,33 @@ func (s *AzureBlobSigner) GenerateUploadURL(blobName string, expiresAt time.Time
 	}
 
 	return uploadURL, nil
+}
+
+func (s *AzureBlobStorage) GetBlobProperties(ctx context.Context, blobName string) (upload.BlobProperties, error) {
+	client, err := blob.NewClientFromConnectionString(s.connectionString, s.containerName, blobName, nil)
+	if err != nil {
+		return upload.BlobProperties{}, fmt.Errorf("%w: %w", ErrCreateBlobClient, err)
+	}
+
+	properties, err := client.GetProperties(ctx, nil)
+	if err != nil {
+		var responseError *azcore.ResponseError
+		if errors.As(err, &responseError) && responseError.StatusCode == http.StatusNotFound {
+			return upload.BlobProperties{}, fmt.Errorf("%w: %w", upload.ErrBlobNotFound, err)
+		}
+		return upload.BlobProperties{}, fmt.Errorf("%w: %w", ErrGetBlobProperties, err)
+	}
+	if properties.ContentLength == nil {
+		return upload.BlobProperties{}, ErrInvalidBlobProperties
+	}
+
+	result := upload.BlobProperties{Size: *properties.ContentLength}
+	if properties.ContentType != nil {
+		result.ContentType = *properties.ContentType
+	}
+	if properties.ETag != nil {
+		result.ETag = string(*properties.ETag)
+	}
+
+	return result, nil
 }

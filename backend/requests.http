@@ -37,3 +37,7 @@ Idempotency-Key: {{idempotencyKey}}
 ### Get upload status
 GET {{apiBaseUrl}}/api/uploads/{{uploadId}}
 Authorization: Bearer {{developmentToken}}
+
+### Complete upload
+POST {{apiBaseUrl}}/api/uploads/{{uploadId}}/complete
+Authorization: Bearer {{developmentToken}}

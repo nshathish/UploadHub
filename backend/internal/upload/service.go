@@ -12,18 +12,33 @@ import (
 const URLLifetime = 10 * time.Minute
 
 var (
-	ErrGenerateUploadURL     = errors.New("generate upload URL")
-	ErrGenerateID            = errors.New("generate upload ID")
-	ErrMissingOwner          = errors.New("missing upload owner")
-	ErrMissingRepository     = errors.New("missing upload session repository")
-	ErrMissingIdempotencyKey = errors.New("missing idempotency key")
-	ErrCreateSession         = errors.New("create upload session")
-	ErrGetIdempotentSession  = errors.New("get idempotent upload session")
-	ErrSessionForbidden      = errors.New("upload session access denied")
+	ErrGenerateUploadURL      = errors.New("generate upload URL")
+	ErrGenerateID             = errors.New("generate upload ID")
+	ErrMissingOwner           = errors.New("missing upload owner")
+	ErrMissingRepository      = errors.New("missing upload session repository")
+	ErrMissingIdempotencyKey  = errors.New("missing idempotency key")
+	ErrCreateSession          = errors.New("create upload session")
+	ErrGetIdempotentSession   = errors.New("get idempotent upload session")
+	ErrSessionForbidden       = errors.New("upload session access denied")
+	ErrMissingBlobInspector   = errors.New("missing blob inspector")
+	ErrBlobNotFound           = errors.New("uploaded blob not found")
+	ErrBlobSizeMismatch       = errors.New("uploaded blob size does not match")
+	ErrSessionExpired         = errors.New("upload session expired")
+	ErrInvalidCompletionState = errors.New("invalid upload completion state")
 )
 
 type URLSigner interface {
 	GenerateUploadURL(blobName string, expiresAt time.Time) (string, error)
+}
+
+type BlobProperties struct {
+	Size        int64
+	ContentType string
+	ETag        string
+}
+
+type BlobInspector interface {
+	GetBlobProperties(ctx context.Context, blobName string) (BlobProperties, error)
 }
 
 type InitiateResult struct {
@@ -42,18 +57,20 @@ type SessionResult struct {
 }
 
 type Service struct {
-	signer   URLSigner
-	sessions SessionRepository
-	now      func() time.Time
-	newID    func() (string, error)
+	signer    URLSigner
+	inspector BlobInspector
+	sessions  SessionRepository
+	now       func() time.Time
+	newID     func() (string, error)
 }
 
-func NewService(signer URLSigner, sessions SessionRepository) *Service {
+func NewService(signer URLSigner, inspector BlobInspector, sessions SessionRepository) *Service {
 	return &Service{
-		signer:   signer,
-		sessions: sessions,
-		now:      time.Now,
-		newID:    newID,
+		signer:    signer,
+		inspector: inspector,
+		sessions:  sessions,
+		now:       time.Now,
+		newID:     newID,
 	}
 }
 
@@ -150,6 +167,77 @@ func (s *Service) Get(ctx context.Context, ownerID string, id string) (SessionRe
 		Status:    session.Status,
 		ExpiresAt: session.ExpiresAt,
 	}, nil
+}
+
+func (s *Service) Complete(ctx context.Context, ownerID string, id string) (SessionResult, error) {
+	if ownerID == "" {
+		return SessionResult{}, ErrMissingOwner
+	}
+	if s.sessions == nil {
+		return SessionResult{}, ErrMissingRepository
+	}
+	if s.inspector == nil {
+		return SessionResult{}, ErrMissingBlobInspector
+	}
+
+	session, err := s.sessions.GetByID(ctx, id)
+	if err != nil {
+		return SessionResult{}, err
+	}
+	if session.OwnerID != ownerID {
+		return SessionResult{}, ErrSessionForbidden
+	}
+	if session.Status == SessionUploaded {
+		return sessionResult(session), nil
+	}
+	if !s.now().UTC().Before(session.ExpiresAt) {
+		return SessionResult{}, ErrSessionExpired
+	}
+	if !session.Status.CanTransitionTo(SessionUploaded) {
+		return SessionResult{}, ErrInvalidCompletionState
+	}
+
+	properties, err := s.inspector.GetBlobProperties(ctx, session.BlobName)
+	if err != nil {
+		if errors.Is(err, ErrBlobNotFound) {
+			return SessionResult{}, ErrBlobNotFound
+		}
+		return SessionResult{}, err
+	}
+	if properties.Size != session.DeclaredSize {
+		if _, err := s.sessions.UpdateStatus(ctx, session.ID, session.Version, SessionRejected); err != nil {
+			return SessionResult{}, err
+		}
+		return SessionResult{}, ErrBlobSizeMismatch
+	}
+
+	updated, err := s.sessions.UpdateStatus(ctx, session.ID, session.Version, SessionUploaded)
+	if err == nil {
+		return sessionResult(updated), nil
+	}
+	if !errors.Is(err, ErrSessionVersionConflict) {
+		return SessionResult{}, err
+	}
+
+	updated, err = s.sessions.GetByID(ctx, session.ID)
+	if err != nil {
+		return SessionResult{}, err
+	}
+	if updated.OwnerID == ownerID && updated.Status == SessionUploaded {
+		return sessionResult(updated), nil
+	}
+
+	return SessionResult{}, ErrSessionVersionConflict
+}
+
+func sessionResult(session UploadSession) SessionResult {
+	return SessionResult{
+		ID:        session.ID,
+		FileName:  session.DisplayName,
+		Size:      session.DeclaredSize,
+		Status:    session.Status,
+		ExpiresAt: session.ExpiresAt,
+	}
 }
 
 func newID() (string, error) {

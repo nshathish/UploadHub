@@ -17,7 +17,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	signer, err := storage.NewAzureBlobSigner(cfg.AzureConnectionString, cfg.AzureContainerName)
+	blobStorage, err := storage.NewAzureBlobStorage(cfg.AzureConnectionString, cfg.AzureContainerName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,6 +27,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer sessions.Close()
+	uploadService := upload.NewService(blobStorage, blobStorage, sessions)
 
 	mux := http.NewServeMux()
 	mux.Handle(
@@ -34,7 +35,7 @@ func main() {
 		handlers.DevelopmentAuth(
 			cfg.DevelopmentAuthToken,
 			cfg.DevelopmentOwnerID,
-			handlers.NewInitiateUploadHandler(upload.NewService(signer, sessions)),
+			handlers.NewInitiateUploadHandler(uploadService),
 		),
 	)
 	mux.Handle(
@@ -42,7 +43,15 @@ func main() {
 		handlers.DevelopmentAuth(
 			cfg.DevelopmentAuthToken,
 			cfg.DevelopmentOwnerID,
-			handlers.NewGetUploadHandler(upload.NewService(signer, sessions)),
+			handlers.NewGetUploadHandler(uploadService),
+		),
+	)
+	mux.Handle(
+		"POST /api/uploads/{id}/complete",
+		handlers.DevelopmentAuth(
+			cfg.DevelopmentAuthToken,
+			cfg.DevelopmentOwnerID,
+			handlers.NewCompleteUploadHandler(uploadService),
 		),
 	)
 
