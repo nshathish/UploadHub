@@ -160,6 +160,24 @@ func TestServiceInitiateChunked(t *testing.T) {
 	if sessions.created.UploadMode != UploadModeChunked {
 		t.Fatalf("stored mode = %q, want %q", sessions.created.UploadMode, UploadModeChunked)
 	}
+	if sessions.created.BlockSize != ChunkBlockSize {
+		t.Fatalf("stored block size = %d, want %d", sessions.created.BlockSize, ChunkBlockSize)
+	}
+}
+
+func TestServiceInitiateChunkedAcceptsLargeFiles(t *testing.T) {
+	signer := &fakeSigner{url: "https://storage.invalid/upload"}
+	sessions := &fakeSessionRepository{}
+	service := NewService(signer, &fakeBlobInspector{}, sessions)
+	service.newID = func() (string, error) { return "large-id", nil }
+
+	result, err := service.InitiateChunked(context.Background(), "demo-user", "large-key", "large.pdf", MaxSingleFileSize+1)
+	if err != nil {
+		t.Fatalf("InitiateChunked() error = %v", err)
+	}
+	if result.BlockSize != ChunkBlockSize || sessions.created.DeclaredSize != MaxSingleFileSize+1 {
+		t.Fatalf("InitiateChunked() result = %#v, session = %#v", result, sessions.created)
+	}
 }
 
 func TestServiceGetRejectsAnotherOwner(t *testing.T) {

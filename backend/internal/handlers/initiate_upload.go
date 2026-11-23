@@ -74,6 +74,8 @@ func newInitiateUploadHandler(initiate initiateUploadFunc) http.HandlerFunc {
 			switch {
 			case errors.Is(err, upload.ErrInvalidFileName), errors.Is(err, upload.ErrInvalidFileSize):
 				http.Error(w, "invalid upload request", http.StatusBadRequest)
+			case errors.Is(err, upload.ErrFileTooLarge):
+				http.Error(w, "file exceeds chunked upload capacity", http.StatusRequestEntityTooLarge)
 			case errors.Is(err, upload.ErrUnsupportedType):
 				http.Error(w, "unsupported file type", http.StatusUnsupportedMediaType)
 			case errors.Is(err, upload.ErrIdempotencyConflict):

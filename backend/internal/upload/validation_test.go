@@ -18,7 +18,7 @@ func TestValidateInitiate(t *testing.T) {
 		{name: "rejects path", fileName: "../passport.pdf", size: 1024, wantErr: ErrInvalidFileName},
 		{name: "rejects empty name", fileName: "", size: 1024, wantErr: ErrInvalidFileName},
 		{name: "rejects empty file", fileName: "passport.pdf", size: 0, wantErr: ErrInvalidFileSize},
-		{name: "rejects oversized file", fileName: "passport.pdf", size: MaxFileSize + 1, wantErr: ErrInvalidFileSize},
+		{name: "rejects oversized file", fileName: "passport.pdf", size: MaxSingleFileSize + 1, wantErr: ErrInvalidFileSize},
 		{name: "rejects unsupported file", fileName: "passport.exe", size: 1024, wantErr: ErrUnsupportedType},
 	}
 
@@ -32,5 +32,20 @@ func TestValidateInitiate(t *testing.T) {
 				t.Errorf("ContentType = %q, want %q", file.ContentType, test.wantType)
 			}
 		})
+	}
+}
+
+func TestValidateChunkedInitiate(t *testing.T) {
+	file, blockSize, err := ValidateChunkedInitiate("large-passport.pdf", MaxSingleFileSize+1)
+	if err != nil {
+		t.Fatalf("ValidateChunkedInitiate() error = %v", err)
+	}
+	if file.Size != MaxSingleFileSize+1 || blockSize != ChunkBlockSize {
+		t.Fatalf("ValidateChunkedInitiate() = %#v, %d", file, blockSize)
+	}
+
+	_, _, err = ValidateChunkedInitiate("too-large.pdf", MaxChunkBlockSize*MaxChunkBlockCount+1)
+	if !errors.Is(err, ErrFileTooLarge) {
+		t.Fatalf("ValidateChunkedInitiate() error = %v, want %v", err, ErrFileTooLarge)
 	}
 }
