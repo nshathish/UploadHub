@@ -1,4 +1,4 @@
-import type { InitiateUploadRequest, InitiateUploadResponse } from '@/features/uploads/types'
+import type { InitiateUploadRequest, InitiateUploadResponse, UploadSession } from '@/features/uploads/types'
 
 const developmentToken = import.meta.env.VITE_DEV_AUTH_TOKEN
 
@@ -36,4 +36,24 @@ export async function initiateUpload(
   }
 
   return response.json() as Promise<InitiateUploadResponse>
+}
+
+export async function completeUpload(uploadId: string): Promise<UploadSession> {
+  if (!developmentToken) {
+    throw new UploadApiError('Missing VITE_DEV_AUTH_TOKEN.', 0)
+  }
+
+  const response = await fetch(`/api/uploads/${uploadId}/complete`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${developmentToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    const message = await response.text()
+    throw new UploadApiError(message || 'Unable to verify the upload.', response.status)
+  }
+
+  return response.json() as Promise<UploadSession>
 }

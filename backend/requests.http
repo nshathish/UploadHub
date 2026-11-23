@@ -13,6 +13,17 @@ Idempotency-Key: {{idempotencyKey}}
   "size": 1024
 }
 
+### Initiate chunked direct upload
+POST {{apiBaseUrl}}/api/uploads/initiate-chunked
+Content-Type: application/json
+Authorization: Bearer {{developmentToken}}
+Idempotency-Key: {{$uuid}}
+
+{
+  "fileName": "synthetic-document.pdf",
+  "size": 9437184
+}
+
 > {%
 if (response.status !== 201) {
   client.log("initiation failed with HTTP " + response.status);

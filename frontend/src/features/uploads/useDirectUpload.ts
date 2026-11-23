@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 
 import { uploadBlob } from '@/api/blobUpload'
-import { initiateUpload } from '@/api/uploads'
+import { completeUpload, initiateUpload } from '@/api/uploads'
 import type { UploadState } from '@/features/uploads/types'
 
 export function useDirectUpload() {
@@ -31,7 +31,9 @@ export function useDirectUpload() {
         },
       })
 
-      setState({ phase: 'transferred', uploadId: upload.id })
+      setState({ phase: 'verifying', uploadId: upload.id })
+      await completeUpload(upload.id)
+      setState({ phase: 'uploaded', uploadId: upload.id })
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         setState({ phase: 'canceled' })

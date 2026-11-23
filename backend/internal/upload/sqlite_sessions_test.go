@@ -89,6 +89,7 @@ func validSession() UploadSession {
 		DeclaredSize:   1024,
 		Extension:      ".pdf",
 		ContentType:    "application/pdf",
+		UploadMode:     UploadModeSingle,
 		IdempotencyKey: "test-key",
 		CreatedAt:      time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC),
 		ExpiresAt:      time.Date(2026, time.November, 22, 12, 10, 0, 0, time.UTC),

@@ -9,6 +9,7 @@ type UploadStatusProps = {
 
 export function UploadStatus({ file, state, onCancel, onReset }: UploadStatusProps) {
   const isActive = state.phase === 'initiating' || state.phase === 'uploading'
+  const isVerifying = state.phase === 'verifying'
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -19,6 +20,8 @@ export function UploadStatus({ file, state, onCancel, onReset }: UploadStatusPro
         </div>
         {isActive ? (
           <button className="text-sm font-semibold text-slate-600 hover:text-slate-900" type="button" onClick={onCancel}>Cancel</button>
+        ) : isVerifying ? (
+          <span className="text-sm font-semibold text-slate-500">Verifying</span>
         ) : (
           <button className="text-sm font-semibold text-indigo-700 hover:text-indigo-600" type="button" onClick={onReset}>Upload another</button>
         )}
@@ -34,11 +37,19 @@ export function UploadStatus({ file, state, onCancel, onReset }: UploadStatusPro
         </div>
       )}
 
-      {state.phase === 'transferred' && (
+      {state.phase === 'verifying' && (
         <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-950">
           <p className="font-semibold">Transfer complete</p>
-          <p className="mt-1 leading-6">Your document is awaiting server-side verification.</p>
+          <p className="mt-1 leading-6">Verifying your document with secure storage…</p>
           <p className="mt-2 font-mono text-xs text-amber-800">Upload ID: {state.uploadId}</p>
+        </div>
+      )}
+
+      {state.phase === 'uploaded' && (
+        <div className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-950">
+          <p className="font-semibold">Upload confirmed</p>
+          <p className="mt-1 leading-6">Your document was received and verified by UploadHub.</p>
+          <p className="mt-2 font-mono text-xs text-emerald-800">Upload ID: {state.uploadId}</p>
         </div>
       )}
 

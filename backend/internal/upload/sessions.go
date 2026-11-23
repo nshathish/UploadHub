@@ -7,6 +7,12 @@ import (
 )
 
 type SessionStatus string
+type UploadMode string
+
+const (
+	UploadModeSingle  UploadMode = "single"
+	UploadModeChunked UploadMode = "chunked"
+)
 
 const (
 	SessionInitiated  SessionStatus = "initiated"
@@ -35,6 +41,7 @@ type UploadSession struct {
 	DeclaredSize   int64
 	Extension      string
 	ContentType    string
+	UploadMode     UploadMode
 	IdempotencyKey string
 	CreatedAt      time.Time
 	ExpiresAt      time.Time

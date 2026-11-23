@@ -48,11 +48,11 @@ func (r *SQLiteSessionRepository) Create(ctx context.Context, session UploadSess
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO upload_sessions (
 			id, owner_id, display_name, blob_name, declared_size, extension,
-			content_type, idempotency_key, created_at, expires_at, status, version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			content_type, upload_mode, idempotency_key, created_at, expires_at, status, version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, session.ID, session.OwnerID, session.DisplayName, session.BlobName,
 		session.DeclaredSize, session.Extension, session.ContentType,
-		session.IdempotencyKey, session.CreatedAt.UTC().Format(time.RFC3339Nano),
+		session.UploadMode, session.IdempotencyKey, session.CreatedAt.UTC().Format(time.RFC3339Nano),
 		session.ExpiresAt.UTC().Format(time.RFC3339Nano),
 		session.Status, session.Version)
 	if err != nil {
@@ -65,7 +65,7 @@ func (r *SQLiteSessionRepository) Create(ctx context.Context, session UploadSess
 func (r *SQLiteSessionRepository) GetByID(ctx context.Context, id string) (UploadSession, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, owner_id, display_name, blob_name, declared_size, extension,
-			content_type, idempotency_key, created_at, expires_at, status, version
+			content_type, upload_mode, idempotency_key, created_at, expires_at, status, version
 		FROM upload_sessions
 		WHERE id = ?
 	`, id)
@@ -76,7 +76,7 @@ func (r *SQLiteSessionRepository) GetByID(ctx context.Context, id string) (Uploa
 func (r *SQLiteSessionRepository) GetByIdempotencyKey(ctx context.Context, ownerID string, key string) (UploadSession, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, owner_id, display_name, blob_name, declared_size, extension,
-			content_type, idempotency_key, created_at, expires_at, status, version
+			content_type, upload_mode, idempotency_key, created_at, expires_at, status, version
 		FROM upload_sessions
 		WHERE owner_id = ? AND idempotency_key = ?
 	`, ownerID, key)
@@ -117,6 +117,7 @@ func scanSession(row *sql.Row) (UploadSession, error) {
 		&session.DeclaredSize,
 		&session.Extension,
 		&session.ContentType,
+		&session.UploadMode,
 		&session.IdempotencyKey,
 		&createdAt,
 		&expiresAt,
@@ -153,6 +154,7 @@ func (r *SQLiteSessionRepository) initialize() error {
 			declared_size INTEGER NOT NULL,
 			extension TEXT NOT NULL,
 			content_type TEXT NOT NULL,
+			upload_mode TEXT NOT NULL,
 			idempotency_key TEXT NOT NULL,
 			created_at TEXT NOT NULL,
 			expires_at TEXT NOT NULL,
@@ -167,6 +169,16 @@ func (r *SQLiteSessionRepository) initialize() error {
 	hasIdempotencyKey, err := r.hasColumn("idempotency_key")
 	if err != nil {
 		return err
+	}
+	hasUploadMode, err := r.hasColumn("upload_mode")
+	if err != nil {
+		return err
+	}
+	if !hasUploadMode {
+		_, err = r.db.Exec(`ALTER TABLE upload_sessions ADD COLUMN upload_mode TEXT NOT NULL DEFAULT 'single'`)
+		if err != nil {
+			return fmt.Errorf("add upload session mode: %w", err)
+		}
 	}
 	if !hasIdempotencyKey {
 		_, err = r.db.Exec(`ALTER TABLE upload_sessions ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''`)
@@ -217,10 +229,14 @@ func (r *SQLiteSessionRepository) hasColumn(name string) (bool, error) {
 func validateSession(session UploadSession) error {
 	if session.ID == "" || session.OwnerID == "" || session.DisplayName == "" ||
 		session.BlobName == "" || session.DeclaredSize <= 0 || session.Extension == "" ||
-		session.ContentType == "" || session.IdempotencyKey == "" || session.CreatedAt.IsZero() || session.ExpiresAt.IsZero() ||
+		session.ContentType == "" || !validUploadMode(session.UploadMode) || session.IdempotencyKey == "" || session.CreatedAt.IsZero() || session.ExpiresAt.IsZero() ||
 		session.Status == "" || session.Version <= 0 {
 		return ErrInvalidSession
 	}
 
 	return nil
+}
+
+func validUploadMode(mode UploadMode) bool {
+	return mode == UploadModeSingle || mode == UploadModeChunked
 }
