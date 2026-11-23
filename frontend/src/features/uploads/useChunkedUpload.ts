@@ -2,10 +2,12 @@ import { useRef, useState } from 'react'
 
 import { uploadBlocks } from '@/api/chunkedBlobUpload'
 import { completeUpload, initiateChunkedUpload } from '@/api/uploads'
+import type { ChunkState } from '@/features/uploads/components/ChunkProgressMap'
 import type { UploadState } from '@/features/uploads/types'
 
 export function useChunkedUpload() {
   const [state, setState] = useState<UploadState>({ phase: 'idle' })
+  const [chunks, setChunks] = useState<ChunkState[]>([])
   const abortController = useRef<AbortController | null>(null)
 
   async function start(file: File) {
@@ -18,10 +20,14 @@ export function useChunkedUpload() {
       if (upload.uploadMode !== 'chunked' || !upload.blockSize) {
         throw new Error('The server did not prepare a chunked upload session.')
       }
+      setChunks(Array.from({ length: Math.ceil(file.size / upload.blockSize) }, () => 'queued'))
       setState({ phase: 'uploading', progress: 0, uploadedBytes: 0 })
       await uploadBlocks(upload.uploadUrl, upload.id, file, upload.blockSize, {
         signal: controller.signal,
         onProgress: (uploadedBytes, totalBytes) => setState({ phase: 'uploading', progress: Math.round((uploadedBytes / totalBytes) * 100), uploadedBytes }),
+        onChunkStart: (index) => setChunks((current) => updateChunk(current, index, 'uploading')),
+        onChunkComplete: (index) => setChunks((current) => updateChunk(current, index, 'complete')),
+        onChunkFailed: (index) => setChunks((current) => updateChunk(current, index, 'failed')),
       })
       setState({ phase: 'verifying', uploadId: upload.id })
       await completeUpload(upload.id)
@@ -44,8 +50,13 @@ export function useChunkedUpload() {
   function reset() {
     abortController.current?.abort()
     abortController.current = null
+    setChunks([])
     setState({ phase: 'idle' })
   }
 
-  return { cancel, reset, start, state }
+  return { cancel, chunks, reset, start, state }
+}
+
+function updateChunk(chunks: ChunkState[], index: number, state: ChunkState): ChunkState[] {
+  return chunks.map((chunk, chunkIndex) => chunkIndex === index ? state : chunk)
 }

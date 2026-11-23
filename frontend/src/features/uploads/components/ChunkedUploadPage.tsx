@@ -1,4 +1,8 @@
+import { useMemo } from 'react'
+
 import { UploadStatus } from '@/features/uploads/components/UploadStatus'
+import { ChunkProgressMap } from '@/features/uploads/components/ChunkProgressMap'
+import { chunkCountForFile } from '@/features/uploads/chunkSizing'
 import { useChunkedUpload } from '@/features/uploads/useChunkedUpload'
 import { singleUploadLimit } from '@/features/uploads/validation'
 
@@ -10,6 +14,8 @@ type ChunkedUploadPageProps = {
 export function ChunkedUploadPage({ file, onBack }: ChunkedUploadPageProps) {
   const upload = useChunkedUpload()
   const isIdle = upload.state.phase === 'idle'
+  const queuedChunks = useMemo(() => Array.from({ length: chunkCountForFile(file.size) }, () => 'queued' as const), [file.size])
+  const chunks = upload.chunks.length > 0 ? upload.chunks : queuedChunks
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
@@ -23,6 +29,7 @@ export function ChunkedUploadPage({ file, onBack }: ChunkedUploadPageProps) {
           </div>
           <div className="p-7 sm:p-10">
             <UploadStatus file={file} state={upload.state} onCancel={upload.cancel} onReset={onBack} />
+            <ChunkProgressMap chunks={chunks} />
             {isIdle && <button className="mt-5 w-full rounded-lg bg-cyan-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-600 focus:ring-offset-2" type="button" onClick={() => upload.start(file)}>Start chunked upload</button>}
             {isIdle && <button className="mt-3 w-full rounded-lg px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100" type="button" onClick={onBack}>Choose a different file</button>}
           </div>

@@ -10,6 +10,7 @@ type UploadStatusProps = {
 export function UploadStatus({ file, state, onCancel, onReset }: UploadStatusProps) {
   const isActive = state.phase === 'initiating' || state.phase === 'uploading'
   const isVerifying = state.phase === 'verifying'
+  const canReset = state.phase === 'uploaded' || state.phase === 'canceled' || state.phase === 'error'
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -22,9 +23,9 @@ export function UploadStatus({ file, state, onCancel, onReset }: UploadStatusPro
           <button className="text-sm font-semibold text-slate-600 hover:text-slate-900" type="button" onClick={onCancel}>Cancel</button>
         ) : isVerifying ? (
           <span className="text-sm font-semibold text-slate-500">Verifying</span>
-        ) : (
+        ) : canReset ? (
           <button className="text-sm font-semibold text-indigo-700 hover:text-indigo-600" type="button" onClick={onReset}>Upload another</button>
-        )}
+        ) : null}
       </div>
 
       {state.phase === 'initiating' && <p className="mt-5 text-sm text-slate-600">Preparing a secure upload…</p>}
