@@ -39,6 +39,14 @@ func main() {
 		),
 	)
 	mux.Handle(
+		"POST /api/uploads/initiate-chunked",
+		handlers.DevelopmentAuth(
+			cfg.DevelopmentAuthToken,
+			cfg.DevelopmentOwnerID,
+			handlers.NewInitiateChunkedUploadHandler(uploadService),
+		),
+	)
+	mux.Handle(
 		"GET /api/uploads/{id}",
 		handlers.DevelopmentAuth(
 			cfg.DevelopmentAuthToken,

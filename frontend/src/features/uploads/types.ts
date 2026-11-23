@@ -10,10 +10,19 @@ export type InitiateUploadResponse = {
   expiresAt: string
 }
 
+export type UploadSession = {
+  id: string
+  fileName: string
+  size: number
+  status: 'initiated' | 'uploading' | 'uploaded' | 'validating' | 'accepted' | 'rejected' | 'canceled' | 'expired' | 'failed'
+  expiresAt: string
+}
+
 export type UploadState =
   | { phase: 'idle' }
   | { phase: 'initiating' }
   | { phase: 'uploading'; progress: number; uploadedBytes: number }
-  | { phase: 'transferred'; uploadId: string }
+  | { phase: 'verifying'; uploadId: string }
+  | { phase: 'uploaded'; uploadId: string }
   | { phase: 'canceled' }
   | { phase: 'error'; message: string }

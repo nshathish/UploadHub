@@ -15,12 +15,26 @@ type UploadInitiator interface {
 	Initiate(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (upload.InitiateResult, error)
 }
 
+type ChunkedUploadInitiator interface {
+	InitiateChunked(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (upload.InitiateResult, error)
+}
+
+type initiateUploadFunc func(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (upload.InitiateResult, error)
+
 type InitiateUploadRequest struct {
 	FileName string `json:"fileName"`
 	Size     int64  `json:"size"`
 }
 
 func NewInitiateUploadHandler(service UploadInitiator) http.HandlerFunc {
+	return newInitiateUploadHandler(service.Initiate)
+}
+
+func NewInitiateChunkedUploadHandler(service ChunkedUploadInitiator) http.HandlerFunc {
+	return newInitiateUploadHandler(service.InitiateChunked)
+}
+
+func newInitiateUploadHandler(initiate initiateUploadFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || mediaType != "application/json" {
@@ -55,7 +69,7 @@ func NewInitiateUploadHandler(service UploadInitiator) http.HandlerFunc {
 			return
 		}
 
-		result, err := service.Initiate(r.Context(), ownerID, idempotencyKey, request.FileName, request.Size)
+		result, err := initiate(r.Context(), ownerID, idempotencyKey, request.FileName, request.Size)
 		if err != nil {
 			switch {
 			case errors.Is(err, upload.ErrInvalidFileName), errors.Is(err, upload.ErrInvalidFileSize):

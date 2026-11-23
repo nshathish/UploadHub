@@ -22,6 +22,11 @@ func (f *fakeUploadInitiator) Initiate(_ context.Context, _ string, _ string, _ 
 	return f.result, f.err
 }
 
+func (f *fakeUploadInitiator) InitiateChunked(_ context.Context, _ string, _ string, _ string, _ int64) (upload.InitiateResult, error) {
+	f.calls++
+	return f.result, f.err
+}
+
 func TestInitiateUploadHandler(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -53,5 +58,20 @@ func TestInitiateUploadHandler(t *testing.T) {
 				t.Fatalf("initiate calls = %d, want %d", fake.calls, test.wantCalls)
 			}
 		})
+	}
+}
+
+func TestInitiateChunkedUploadHandler(t *testing.T) {
+	fake := &fakeUploadInitiator{result: upload.InitiateResult{ID: "opaque-id", UploadMode: upload.UploadModeChunked, BlockSize: upload.ChunkBlockSize}}
+	request := httptest.NewRequest(http.MethodPost, "/api/uploads/initiate-chunked", strings.NewReader(`{"fileName":"document.pdf","size":1}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "test-key")
+	request = request.WithContext(context.WithValue(request.Context(), ownerContextKey{}, "demo-user"))
+	recorder := httptest.NewRecorder()
+
+	NewInitiateChunkedUploadHandler(fake).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusCreated)
 	}
 }

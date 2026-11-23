@@ -70,6 +70,12 @@ func (f *fakeSigner) GenerateUploadURL(blobName string, expiresAt time.Time) (st
 	return f.url, f.err
 }
 
+func (f *fakeSigner) GenerateBlockUploadURL(blobName string, expiresAt time.Time) (string, error) {
+	f.blobName = blobName
+	f.expires = expiresAt
+	return f.url, f.err
+}
+
 func (f *fakeBlobInspector) GetBlobProperties(_ context.Context, blobName string) (BlobProperties, error) {
 	f.blobName = blobName
 	return f.properties, f.err
@@ -115,10 +121,11 @@ func TestServiceInitiateReusesActiveSession(t *testing.T) {
 	now := time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC)
 	signer := &fakeSigner{url: "https://storage.invalid/upload"}
 	sessions := &fakeSessionRepository{existing: UploadSession{
-		ID:        "existing-id",
-		BlobName:  "existing-id.pdf",
-		ExpiresAt: now.Add(URLLifetime),
-		Status:    SessionInitiated,
+		ID:         "existing-id",
+		BlobName:   "existing-id.pdf",
+		ExpiresAt:  now.Add(URLLifetime),
+		Status:     SessionInitiated,
+		UploadMode: UploadModeSingle,
 	}}
 	service := NewService(signer, &fakeBlobInspector{}, sessions)
 	service.now = func() time.Time { return now }
@@ -132,6 +139,26 @@ func TestServiceInitiateReusesActiveSession(t *testing.T) {
 	}
 	if sessions.createCalls != 0 {
 		t.Fatalf("Create() calls = %d, want 0", sessions.createCalls)
+	}
+}
+
+func TestServiceInitiateChunked(t *testing.T) {
+	now := time.Date(2026, time.November, 22, 12, 0, 0, 0, time.UTC)
+	signer := &fakeSigner{url: "https://storage.invalid/upload"}
+	sessions := &fakeSessionRepository{}
+	service := NewService(signer, &fakeBlobInspector{}, sessions)
+	service.now = func() time.Time { return now }
+	service.newID = func() (string, error) { return "opaque-id", nil }
+
+	result, err := service.InitiateChunked(context.Background(), "demo-user", "chunk-key", "passport.pdf", 1024)
+	if err != nil {
+		t.Fatalf("InitiateChunked() error = %v", err)
+	}
+	if result.UploadMode != UploadModeChunked || result.BlockSize != ChunkBlockSize {
+		t.Fatalf("InitiateChunked() result = %#v", result)
+	}
+	if sessions.created.UploadMode != UploadModeChunked {
+		t.Fatalf("stored mode = %q, want %q", sessions.created.UploadMode, UploadModeChunked)
 	}
 }
 

@@ -42,13 +42,21 @@ func NewAzureBlobStorage(connectionString string, containerName string) (*AzureB
 }
 
 func (s *AzureBlobStorage) GenerateUploadURL(blobName string, expiresAt time.Time) (string, error) {
+	return s.generateSASURL(blobName, expiresAt, sas.BlobPermissions{Create: true})
+}
+
+func (s *AzureBlobStorage) GenerateBlockUploadURL(blobName string, expiresAt time.Time) (string, error) {
+	return s.generateSASURL(blobName, expiresAt, sas.BlobPermissions{Write: true})
+}
+
+func (s *AzureBlobStorage) generateSASURL(blobName string, expiresAt time.Time, permissions sas.BlobPermissions) (string, error) {
 	client, err := blob.NewClientFromConnectionString(s.connectionString, s.containerName, blobName, nil)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrCreateBlobClient, err)
 	}
 
 	startTime := time.Now().UTC().Add(-5 * time.Minute)
-	uploadURL, err := client.GetSASURL(sas.BlobPermissions{Create: true}, expiresAt, &blob.GetSASURLOptions{StartTime: &startTime})
+	uploadURL, err := client.GetSASURL(permissions, expiresAt, &blob.GetSASURLOptions{StartTime: &startTime})
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrGenerateSASURL, err)
 	}

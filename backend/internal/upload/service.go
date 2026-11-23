@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const URLLifetime = 10 * time.Minute
+const (
+	URLLifetime    = 10 * time.Minute
+	ChunkBlockSize = 4 << 20
+)
 
 var (
 	ErrGenerateUploadURL      = errors.New("generate upload URL")
@@ -29,6 +32,7 @@ var (
 
 type URLSigner interface {
 	GenerateUploadURL(blobName string, expiresAt time.Time) (string, error)
+	GenerateBlockUploadURL(blobName string, expiresAt time.Time) (string, error)
 }
 
 type BlobProperties struct {
@@ -42,10 +46,12 @@ type BlobInspector interface {
 }
 
 type InitiateResult struct {
-	ID        string    `json:"id"`
-	BlobName  string    `json:"blobName"`
-	UploadURL string    `json:"uploadUrl"`
-	ExpiresAt time.Time `json:"expiresAt"`
+	ID         string     `json:"id"`
+	BlobName   string     `json:"blobName"`
+	UploadURL  string     `json:"uploadUrl"`
+	ExpiresAt  time.Time  `json:"expiresAt"`
+	UploadMode UploadMode `json:"uploadMode"`
+	BlockSize  int64      `json:"blockSize,omitempty"`
 }
 
 type SessionResult struct {
@@ -75,6 +81,14 @@ func NewService(signer URLSigner, inspector BlobInspector, sessions SessionRepos
 }
 
 func (s *Service) Initiate(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (InitiateResult, error) {
+	return s.initiate(ctx, ownerID, idempotencyKey, fileName, size, UploadModeSingle)
+}
+
+func (s *Service) InitiateChunked(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (InitiateResult, error) {
+	return s.initiate(ctx, ownerID, idempotencyKey, fileName, size, UploadModeChunked)
+}
+
+func (s *Service) initiate(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64, uploadMode UploadMode) (InitiateResult, error) {
 	if ownerID == "" {
 		return InitiateResult{}, ErrMissingOwner
 	}
@@ -93,14 +107,14 @@ func (s *Service) Initiate(ctx context.Context, ownerID string, idempotencyKey s
 	now := s.now().UTC()
 	existing, err := s.sessions.GetByIdempotencyKey(ctx, ownerID, idempotencyKey)
 	if err == nil {
-		if existing.Status != SessionInitiated || !now.Before(existing.ExpiresAt) {
+		if existing.Status != SessionInitiated || existing.UploadMode != uploadMode || !now.Before(existing.ExpiresAt) {
 			return InitiateResult{}, ErrIdempotencyConflict
 		}
-		uploadURL, signingErr := s.signer.GenerateUploadURL(existing.BlobName, existing.ExpiresAt)
+		uploadURL, signingErr := s.generateUploadURL(uploadMode, existing.BlobName, existing.ExpiresAt)
 		if signingErr != nil {
 			return InitiateResult{}, fmt.Errorf("%w: %w", ErrGenerateUploadURL, signingErr)
 		}
-		return InitiateResult{ID: existing.ID, BlobName: existing.BlobName, UploadURL: uploadURL, ExpiresAt: existing.ExpiresAt}, nil
+		return newInitiateResult(existing.ID, existing.BlobName, uploadURL, existing.ExpiresAt, uploadMode), nil
 	}
 	if !errors.Is(err, ErrSessionNotFound) {
 		return InitiateResult{}, fmt.Errorf("%w: %w", ErrGetIdempotentSession, err)
@@ -122,6 +136,7 @@ func (s *Service) Initiate(ctx context.Context, ownerID string, idempotencyKey s
 		DeclaredSize:   file.Size,
 		Extension:      file.Extension,
 		ContentType:    file.ContentType,
+		UploadMode:     uploadMode,
 		IdempotencyKey: idempotencyKey,
 		CreatedAt:      createdAt,
 		ExpiresAt:      expiresAt,
@@ -131,17 +146,29 @@ func (s *Service) Initiate(ctx context.Context, ownerID string, idempotencyKey s
 		return InitiateResult{}, fmt.Errorf("%w: %w", ErrCreateSession, err)
 	}
 
-	uploadURL, err := s.signer.GenerateUploadURL(blobName, expiresAt)
+	uploadURL, err := s.generateUploadURL(uploadMode, blobName, expiresAt)
 	if err != nil {
 		return InitiateResult{}, fmt.Errorf("%w: %w", ErrGenerateUploadURL, err)
 	}
 
-	return InitiateResult{
-		ID:        id,
-		BlobName:  blobName,
-		UploadURL: uploadURL,
-		ExpiresAt: expiresAt,
-	}, nil
+	return newInitiateResult(id, blobName, uploadURL, expiresAt, uploadMode), nil
+}
+
+func (s *Service) generateUploadURL(uploadMode UploadMode, blobName string, expiresAt time.Time) (string, error) {
+	if uploadMode == UploadModeChunked {
+		return s.signer.GenerateBlockUploadURL(blobName, expiresAt)
+	}
+
+	return s.signer.GenerateUploadURL(blobName, expiresAt)
+}
+
+func newInitiateResult(id string, blobName string, uploadURL string, expiresAt time.Time, uploadMode UploadMode) InitiateResult {
+	result := InitiateResult{ID: id, BlobName: blobName, UploadURL: uploadURL, ExpiresAt: expiresAt, UploadMode: uploadMode}
+	if uploadMode == UploadModeChunked {
+		result.BlockSize = ChunkBlockSize
+	}
+
+	return result
 }
 
 func (s *Service) Get(ctx context.Context, ownerID string, id string) (SessionResult, error) {
