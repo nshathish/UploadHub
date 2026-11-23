@@ -1,6 +1,9 @@
 export type ChunkedBlobUploadOptions = {
   signal: AbortSignal
   onProgress: (uploadedBytes: number, totalBytes: number) => void
+  onChunkStart: (index: number) => void
+  onChunkComplete: (index: number) => void
+  onChunkFailed: (index: number) => void
 }
 
 export async function uploadBlocks(
@@ -16,9 +19,18 @@ export async function uploadBlocks(
   for (let index = 0; uploadedBytes < file.size; index += 1) {
     const end = Math.min(uploadedBytes + blockSize, file.size)
     const blockId = createBlockId(uploadId, index)
-    await stageBlock(uploadUrl, blockId, file.slice(uploadedBytes, end), uploadedBytes, file.size, options)
+    options.onChunkStart(index)
+    try {
+      await stageBlock(uploadUrl, blockId, file.slice(uploadedBytes, end), uploadedBytes, file.size, options)
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        options.onChunkFailed(index)
+      }
+      throw error
+    }
     blockIds.push(blockId)
     uploadedBytes = end
+    options.onChunkComplete(index)
     options.onProgress(uploadedBytes, file.size)
   }
 
