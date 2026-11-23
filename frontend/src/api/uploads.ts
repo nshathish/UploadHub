@@ -16,11 +16,26 @@ export async function initiateUpload(
   request: InitiateUploadRequest,
   idempotencyKey: string,
 ): Promise<InitiateUploadResponse> {
+  return initiate(request, idempotencyKey, '/api/uploads/initiate')
+}
+
+export async function initiateChunkedUpload(
+  request: InitiateUploadRequest,
+  idempotencyKey: string,
+): Promise<InitiateUploadResponse> {
+  return initiate(request, idempotencyKey, '/api/uploads/initiate-chunked')
+}
+
+async function initiate(
+  request: InitiateUploadRequest,
+  idempotencyKey: string,
+  endpoint: string,
+): Promise<InitiateUploadResponse> {
   if (!developmentToken) {
     throw new UploadApiError('Missing VITE_DEV_AUTH_TOKEN.', 0)
   }
 
-  const response = await fetch('/api/uploads/initiate', {
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${developmentToken}`,

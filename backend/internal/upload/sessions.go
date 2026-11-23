@@ -42,6 +42,7 @@ type UploadSession struct {
 	Extension      string
 	ContentType    string
 	UploadMode     UploadMode
+	BlockSize      int64
 	IdempotencyKey string
 	CreatedAt      time.Time
 	ExpiresAt      time.Time

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 
 import { FilePicker } from '@/features/uploads/components/FilePicker'
+import { ChunkedUploadPage } from '@/features/uploads/components/ChunkedUploadPage'
 import { UploadStatus } from '@/features/uploads/components/UploadStatus'
 import { useDirectUpload } from '@/features/uploads/useDirectUpload'
-import { validateFile } from '@/features/uploads/validation'
+import { requiresChunkedUpload, validateFile } from '@/features/uploads/validation'
 
 export function UploadWorkspace() {
   const [file, setFile] = useState<File | null>(null)
@@ -29,6 +30,10 @@ export function UploadWorkspace() {
     setValidationError(null)
   }
 
+  if (file && requiresChunkedUpload(file)) {
+    return <ChunkedUploadPage file={file} onBack={reset} />
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
@@ -45,7 +50,7 @@ export function UploadWorkspace() {
           <aside className="bg-indigo-700 p-7 text-white sm:p-10">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-200">How it works</p>
             <ol className="mt-8 space-y-7"><Step number="01" title="Select your document" description="We validate file type and size before the transfer begins." /><Step number="02" title="Receive a secure upload link" description="The server authorizes one short-lived, file-specific storage URL." /><Step number="03" title="Upload and verify" description="Your browser transfers directly to storage, then the server verifies receipt." /></ol>
-            <div className="mt-10 border-t border-white/20 pt-6 text-sm leading-6 text-indigo-100">Supported files: PDF, JPEG, and PNG. Maximum document size: 25 MiB.</div>
+            <div className="mt-10 border-t border-white/20 pt-6 text-sm leading-6 text-indigo-100">Supported files: PDF, JPEG, and PNG. Files above 25 MiB automatically use chunked transfer.</div>
           </aside>
         </section>
       </div>

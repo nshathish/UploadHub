@@ -26,7 +26,7 @@ export function FilePicker({ disabled, onFileSelected }: FilePickerProps) {
       />
       <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-indigo-100 text-2xl text-indigo-700">↑</div>
       <p className="text-base font-semibold text-slate-900">Select a document to upload</p>
-      <p className="mt-2 text-sm leading-6 text-slate-600">PDF, JPEG, or PNG. Maximum size 25 MiB.</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">PDF, JPEG, or PNG. Files above 25 MiB use chunked transfer automatically.</p>
       <button
         className="mt-5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400"
         type="button"

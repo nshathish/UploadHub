@@ -1,4 +1,4 @@
-const maxFileSize = 25 * 1024 * 1024
+export const singleUploadLimit = 25 * 1024 * 1024
 
 const allowedFileTypes = new Map([
   ['application/pdf', '.pdf'],
@@ -11,10 +11,6 @@ export function validateFile(file: File): string | null {
     return 'Choose a file that is not empty.'
   }
 
-  if (file.size > maxFileSize) {
-    return 'Choose a file smaller than 25 MiB.'
-  }
-
   const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
   const expectedExtension = allowedFileTypes.get(file.type)
   if (!expectedExtension || (extension !== expectedExtension && !(file.type === 'image/jpeg' && extension === '.jpeg'))) {
@@ -22,4 +18,8 @@ export function validateFile(file: File): string | null {
   }
 
   return null
+}
+
+export function requiresChunkedUpload(file: File): boolean {
+  return file.size > singleUploadLimit
 }

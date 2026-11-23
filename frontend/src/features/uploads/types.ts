@@ -8,6 +8,8 @@ export type InitiateUploadResponse = {
   blobName: string
   uploadUrl: string
   expiresAt: string
+  uploadMode: 'single' | 'chunked'
+  blockSize?: number
 }
 
 export type UploadSession = {
