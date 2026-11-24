@@ -1,62 +1,94 @@
-import { useRef, useState } from 'react'
+import { useRef, useState } from 'react';
 
-import { uploadBlocks } from '@/api/chunkedBlobUpload'
-import { completeUpload, initiateChunkedUpload } from '@/api/uploads'
-import type { ChunkState } from '@/features/uploads/components/ChunkProgressMap'
-import type { UploadState } from '@/features/uploads/types'
+import { uploadBlocks } from '@/api/chunkedBlobUpload';
+import { completeUpload, initiateChunkedUpload } from '@/api/uploads';
+import type { ChunkState } from '@/features/uploads/components/ChunkProgressMap';
+import type { UploadState } from '@/features/uploads/types';
 
 export function useChunkedUpload() {
-  const [state, setState] = useState<UploadState>({ phase: 'idle' })
-  const [chunks, setChunks] = useState<ChunkState[]>([])
-  const abortController = useRef<AbortController | null>(null)
+  const [state, setState] = useState<UploadState>({ phase: 'idle' });
+  const [chunks, setChunks] = useState<ChunkState[]>([]);
+  const abortController = useRef<AbortController | null>(null);
 
   async function start(file: File) {
-    const controller = new AbortController()
-    abortController.current = controller
-    setState({ phase: 'initiating' })
+    const controller = new AbortController();
+    abortController.current = controller;
+    setState({ phase: 'initiating' });
 
     try {
-      const upload = await initiateChunkedUpload({ fileName: file.name, size: file.size }, crypto.randomUUID())
+      const upload = await initiateChunkedUpload(
+        { fileName: file.name, size: file.size },
+        crypto.randomUUID(),
+      );
+
       if (upload.uploadMode !== 'chunked' || !upload.blockSize) {
-        throw new Error('The server did not prepare a chunked upload session.')
+        throw new Error('The server did not prepare a chunked upload session.');
       }
-      setChunks(Array.from({ length: Math.ceil(file.size / upload.blockSize) }, () => 'queued'))
-      setState({ phase: 'uploading', progress: 0, uploadedBytes: 0 })
+
+      setChunks(
+        Array.from(
+          { length: Math.ceil(file.size / upload.blockSize) },
+          () => 'queued',
+        ),
+      );
+
+      setState({ phase: 'uploading', progress: 0, uploadedBytes: 0 });
       await uploadBlocks(upload.uploadUrl, upload.id, file, upload.blockSize, {
         signal: controller.signal,
-        onProgress: (uploadedBytes, totalBytes) => setState({ phase: 'uploading', progress: Math.round((uploadedBytes / totalBytes) * 100), uploadedBytes }),
-        onChunkStart: (index) => setChunks((current) => updateChunk(current, index, 'uploading')),
-        onChunkComplete: (index) => setChunks((current) => updateChunk(current, index, 'complete')),
-        onChunkFailed: (index) => setChunks((current) => updateChunk(current, index, 'failed')),
-      })
-      setState({ phase: 'verifying', uploadId: upload.id })
-      await completeUpload(upload.id)
-      setState({ phase: 'uploaded', uploadId: upload.id })
+        onProgress: (uploadedBytes, totalBytes) =>
+          setState({
+            phase: 'uploading',
+            progress: Math.round((uploadedBytes / totalBytes) * 100),
+            uploadedBytes,
+          }),
+        onChunkStart: (index) =>
+          setChunks((current) => updateChunk(current, index, 'uploading')),
+        onChunkComplete: (index) =>
+          setChunks((current) => updateChunk(current, index, 'complete')),
+        onChunkFailed: (index) =>
+          setChunks((current) => updateChunk(current, index, 'failed')),
+      });
+
+      setState({ phase: 'verifying', uploadId: upload.id });
+      await completeUpload(upload.id);
+      setState({ phase: 'uploaded', uploadId: upload.id });
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        setState({ phase: 'canceled' })
+        setState({ phase: 'canceled' });
       } else {
-        setState({ phase: 'error', message: error instanceof Error ? error.message : 'Unable to upload the document.' })
+        setState({
+          phase: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Unable to upload the document.',
+        });
       }
     } finally {
-      abortController.current = null
+      abortController.current = null;
     }
   }
 
   function cancel() {
-    abortController.current?.abort()
+    abortController.current?.abort();
   }
 
   function reset() {
-    abortController.current?.abort()
-    abortController.current = null
-    setChunks([])
-    setState({ phase: 'idle' })
+    abortController.current?.abort();
+    abortController.current = null;
+    setChunks([]);
+    setState({ phase: 'idle' });
   }
 
-  return { cancel, chunks, reset, start, state }
+  return { cancel, chunks, reset, start, state };
 }
 
-function updateChunk(chunks: ChunkState[], index: number, state: ChunkState): ChunkState[] {
-  return chunks.map((chunk, chunkIndex) => chunkIndex === index ? state : chunk)
+function updateChunk(
+  chunks: ChunkState[],
+  index: number,
+  state: ChunkState,
+): ChunkState[] {
+  return chunks.map((chunk, chunkIndex) =>
+    chunkIndex === index ? state : chunk,
+  );
 }
