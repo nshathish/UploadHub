@@ -41,6 +41,14 @@ func TestSQLiteSessionRepositoryPersistsSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByIdempotencyKey() error = %v", err)
 	}
+
+	listed, err := repository.ListByOwner(context.Background(), session.OwnerID)
+	if err != nil {
+		t.Fatalf("ListByOwner() error = %v", err)
+	}
+	if len(listed) != 1 || listed[0] != session {
+		t.Fatalf("ListByOwner() = %#v, want %#v", listed, session)
+	}
 	if stored != session {
 		t.Fatalf("GetByIdempotencyKey() = %#v, want %#v", stored, session)
 	}

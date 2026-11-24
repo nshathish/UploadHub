@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAuth } from '@/features/auth/AuthContext';
 import { FilePicker } from '@/features/uploads/components/FilePicker';
 import { ChunkedUploadPage } from '@/features/uploads/components/ChunkedUploadPage';
 import { UploadStatus } from '@/features/uploads/components/UploadStatus';
@@ -9,12 +10,19 @@ import {
   validateFile,
 } from '@/features/uploads/validation';
 
-export function UploadWorkspace() {
+type UploadWorkspaceProps = {
+  onBackToUploads: () => void;
+};
+
+export function UploadWorkspace({ onBackToUploads }: UploadWorkspaceProps) {
+  const { session, signOut } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const upload = useDirectUpload();
   const isBusy =
-    upload.state.phase === 'initiating' || upload.state.phase === 'uploading';
+    upload.state.phase === 'initiating' ||
+    upload.state.phase === 'uploading' ||
+    upload.state.phase === 'verifying';
 
   function selectFile(nextFile: File) {
     const error = validateFile(nextFile);
@@ -35,19 +43,30 @@ export function UploadWorkspace() {
   }
 
   if (file && requiresChunkedUpload(file)) {
-    return <ChunkedUploadPage file={file} onBack={reset} />;
+    return <ChunkedUploadPage
+      file={file}
+      onBack={reset}
+      onBackToUploads={onBackToUploads}
+    />;
   }
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
-        <header className="flex items-center gap-3 text-white">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-indigo-500 text-lg font-black">
-            U
+        <header className="flex items-center justify-between gap-4 text-white">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-indigo-500 text-lg font-black">
+              U
+            </div>
+            <div>
+              <p className="text-lg font-bold tracking-tight">UploadHub</p>
+              <p className="text-sm text-slate-400">Secure document intake</p>
+            </div>
           </div>
-          <div>
-            <p className="text-lg font-bold tracking-tight">UploadHub</p>
-            <p className="text-sm text-slate-400">Secure document intake</p>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-sm text-slate-300 sm:inline">Signed in as {session?.user.username}</span>
+            <button className="rounded-lg border border-slate-600 px-3 py-2 text-sm font-semibold transition hover:border-slate-400 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" type="button" onClick={onBackToUploads} disabled={isBusy}>My uploads</button>
+            <button className="rounded-lg border border-slate-600 px-3 py-2 text-sm font-semibold transition hover:border-slate-400 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" type="button" onClick={() => void signOut()} disabled={isBusy}>Sign out</button>
           </div>
         </header>
         <section className="mt-10 grid overflow-hidden rounded-3xl bg-white shadow-2xl shadow-slate-950/30 lg:grid-cols-[1.05fr_0.95fr]">

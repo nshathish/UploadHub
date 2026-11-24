@@ -73,6 +73,34 @@ func (r *SQLiteSessionRepository) GetByID(ctx context.Context, id string) (Uploa
 	return scanSession(row)
 }
 
+func (r *SQLiteSessionRepository) ListByOwner(ctx context.Context, ownerID string) ([]UploadSession, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, owner_id, display_name, blob_name, declared_size, extension,
+			content_type, upload_mode, block_size, idempotency_key, created_at, expires_at, status, version
+		FROM upload_sessions
+		WHERE owner_id = ?
+		ORDER BY created_at DESC
+	`, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list upload sessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := make([]UploadSession, 0)
+	for rows.Next() {
+		session, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate upload sessions: %w", err)
+	}
+
+	return sessions, nil
+}
+
 func (r *SQLiteSessionRepository) GetByIdempotencyKey(ctx context.Context, ownerID string, key string) (UploadSession, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, owner_id, display_name, blob_name, declared_size, extension,
@@ -105,7 +133,11 @@ func (r *SQLiteSessionRepository) UpdateStatus(ctx context.Context, id string, v
 	return r.GetByID(ctx, id)
 }
 
-func scanSession(row *sql.Row) (UploadSession, error) {
+type sessionScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanSession(row sessionScanner) (UploadSession, error) {
 	var session UploadSession
 	var createdAt string
 	var expiresAt string

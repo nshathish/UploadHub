@@ -54,6 +54,10 @@ func main() {
 		handlers.SessionAuth(authService, handlers.NewInitiateChunkedUploadHandler(uploadService)),
 	)
 	mux.Handle(
+		"GET /api/uploads",
+		handlers.SessionAuth(authService, handlers.NewListUploadsHandler(uploadService)),
+	)
+	mux.Handle(
 		"GET /api/uploads/{id}",
 		handlers.SessionAuth(authService, handlers.NewGetUploadHandler(uploadService)),
 	)

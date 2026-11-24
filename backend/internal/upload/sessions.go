@@ -53,6 +53,7 @@ type UploadSession struct {
 type SessionRepository interface {
 	Create(ctx context.Context, session UploadSession) error
 	GetByID(ctx context.Context, id string) (UploadSession, error)
+	ListByOwner(ctx context.Context, ownerID string) ([]UploadSession, error)
 	GetByIdempotencyKey(ctx context.Context, ownerID string, key string) (UploadSession, error)
 	UpdateStatus(ctx context.Context, id string, version int64, status SessionStatus) (UploadSession, error)
 }

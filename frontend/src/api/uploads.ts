@@ -1,6 +1,5 @@
 import type { InitiateUploadRequest, InitiateUploadResponse, UploadSession } from '@/features/uploads/types'
-
-const developmentToken = import.meta.env.VITE_DEV_AUTH_TOKEN
+import { getSessionToken } from '@/features/auth/session'
 
 export class UploadApiError extends Error {
   readonly status: number
@@ -31,14 +30,15 @@ async function initiate(
   idempotencyKey: string,
   endpoint: string,
 ): Promise<InitiateUploadResponse> {
-  if (!developmentToken) {
-    throw new UploadApiError('Missing VITE_DEV_AUTH_TOKEN.', 0)
+  const token = getSessionToken()
+  if (!token) {
+    throw new UploadApiError('Your session has ended. Sign in again.', 401)
   }
 
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${developmentToken}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
     },
@@ -54,14 +54,15 @@ async function initiate(
 }
 
 export async function completeUpload(uploadId: string): Promise<UploadSession> {
-  if (!developmentToken) {
-    throw new UploadApiError('Missing VITE_DEV_AUTH_TOKEN.', 0)
+  const token = getSessionToken()
+  if (!token) {
+    throw new UploadApiError('Your session has ended. Sign in again.', 401)
   }
 
   const response = await fetch(`/api/uploads/${uploadId}/complete`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${developmentToken}`,
+      Authorization: `Bearer ${token}`,
     },
   })
 
@@ -71,4 +72,19 @@ export async function completeUpload(uploadId: string): Promise<UploadSession> {
   }
 
   return response.json() as Promise<UploadSession>
+}
+
+export async function listUploads(): Promise<UploadSession[]> {
+  const token = getSessionToken()
+  if (!token) {
+    throw new UploadApiError('Your session has ended. Sign in again.', 401)
+  }
+
+  const response = await fetch('/api/uploads', { headers: { Authorization: `Bearer ${token}` } })
+  if (!response.ok) {
+    const message = await response.text()
+    throw new UploadApiError(message || 'Unable to load uploads.', response.status)
+  }
+
+  return response.json() as Promise<UploadSession[]>
 }
