@@ -9,6 +9,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"github.com/nshathish/uploadhub/backend/internal/upload"
 )
@@ -20,11 +21,34 @@ var (
 	ErrGenerateSASURL          = errors.New("generate Azure Blob SAS URL")
 	ErrGetBlobProperties       = errors.New("get Azure Blob properties")
 	ErrInvalidBlobProperties   = errors.New("invalid Azure Blob properties")
+	ErrGetBlockList            = errors.New("get Azure Blob block list")
 )
 
 type AzureBlobStorage struct {
 	connectionString string
 	containerName    string
+}
+
+func (s *AzureBlobStorage) GetUncommittedBlockIDs(ctx context.Context, blobName string) ([]string, error) {
+	client, err := blockblob.NewClientFromConnectionString(s.connectionString, s.containerName, blobName, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCreateBlobClient, err)
+	}
+	blockList, err := client.GetBlockList(ctx, blockblob.BlockListTypeUncommitted, nil)
+	if err != nil {
+		var responseError *azcore.ResponseError
+		if errors.As(err, &responseError) && responseError.StatusCode == http.StatusNotFound {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("%w: %w", ErrGetBlockList, err)
+	}
+	ids := make([]string, 0, len(blockList.UncommittedBlocks))
+	for _, block := range blockList.UncommittedBlocks {
+		if block.Name != nil {
+			ids = append(ids, *block.Name)
+		}
+	}
+	return ids, nil
 }
 
 func NewAzureBlobStorage(connectionString string, containerName string) (*AzureBlobStorage, error) {

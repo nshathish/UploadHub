@@ -29,4 +29,4 @@ export type UploadState =
   | { phase: 'verifying'; uploadId: string }
   | { phase: 'uploaded'; uploadId: string }
   | { phase: 'canceled' }
-  | { phase: 'error'; message: string }
+  | { phase: 'error'; message: string; uploadId?: string }

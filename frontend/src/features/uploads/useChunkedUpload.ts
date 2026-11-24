@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 
 import { uploadBlocks } from '@/api/chunkedBlobUpload';
-import { completeUpload, initiateChunkedUpload } from '@/api/uploads';
+import { completeUpload, initiateChunkedUpload, resumeChunkedUpload } from '@/api/uploads';
 import type { ChunkState } from '@/features/uploads/components/ChunkProgressMap';
 import type { UploadState } from '@/features/uploads/types';
 
@@ -11,29 +11,40 @@ export function useChunkedUpload() {
   const abortController = useRef<AbortController | null>(null);
 
   async function start(file: File) {
+    await upload(file);
+  }
+
+  async function retry(file: File) {
+    if (state.phase !== 'error' || !state.uploadId) return;
+    await upload(file, state.uploadId);
+  }
+
+  async function upload(file: File, retryUploadId?: string) {
     const controller = new AbortController();
+    let uploadID = retryUploadId;
     abortController.current = controller;
     setState({ phase: 'initiating' });
 
     try {
-      const upload = await initiateChunkedUpload(
-        { fileName: file.name, size: file.size },
-        crypto.randomUUID(),
-      );
+      const upload = retryUploadId
+        ? await resumeChunkedUpload(retryUploadId)
+        : await initiateChunkedUpload({ fileName: file.name, size: file.size }, crypto.randomUUID());
+      uploadID = upload.id;
 
-      if (upload.uploadMode !== 'chunked' || !upload.blockSize) {
+      if (('uploadMode' in upload && upload.uploadMode !== 'chunked') || !upload.blockSize) {
         throw new Error('The server did not prepare a chunked upload session.');
       }
 
+      const completedChunkIndexes = 'completedChunkIndexes' in upload ? upload.completedChunkIndexes : [];
       setChunks(
         Array.from(
           { length: Math.ceil(file.size / upload.blockSize) },
-          () => 'queued',
+          (_, index) => completedChunkIndexes.includes(index) ? 'complete' : 'queued',
         ),
       );
 
       setState({ phase: 'uploading', progress: 0, uploadedBytes: 0 });
-      await uploadBlocks(upload.uploadUrl, upload.id, file, upload.blockSize, {
+      await uploadBlocks(upload.uploadUrl, upload.id, file, upload.blockSize, completedChunkIndexes, {
         signal: controller.signal,
         onProgress: (uploadedBytes, totalBytes) =>
           setState({
@@ -62,6 +73,7 @@ export function useChunkedUpload() {
             error instanceof Error
               ? error.message
               : 'Unable to upload the document.',
+          uploadId: uploadID,
         });
       }
     } finally {
@@ -80,7 +92,7 @@ export function useChunkedUpload() {
     setState({ phase: 'idle' });
   }
 
-  return { cancel, chunks, reset, start, state };
+  return { cancel, chunks, reset, retry, start, state };
 }
 
 function updateChunk(

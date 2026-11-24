@@ -3,14 +3,18 @@ package upload
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
 const (
-	URLLifetime = 10 * time.Minute
+	URLLifetime     = 10 * time.Minute
+	SessionLifetime = 24 * time.Hour
 )
 
 var (
@@ -27,6 +31,8 @@ var (
 	ErrBlobSizeMismatch       = errors.New("uploaded blob size does not match")
 	ErrSessionExpired         = errors.New("upload session expired")
 	ErrInvalidCompletionState = errors.New("invalid upload completion state")
+	ErrMissingBlockInspector  = errors.New("missing block inspector")
+	ErrInvalidResumeState     = errors.New("invalid upload resume state")
 )
 
 type URLSigner interface {
@@ -42,6 +48,10 @@ type BlobProperties struct {
 
 type BlobInspector interface {
 	GetBlobProperties(ctx context.Context, blobName string) (BlobProperties, error)
+}
+
+type BlockInspector interface {
+	GetUncommittedBlockIDs(ctx context.Context, blobName string) ([]string, error)
 }
 
 type InitiateResult struct {
@@ -63,9 +73,18 @@ type SessionResult struct {
 	ExpiresAt  time.Time     `json:"expiresAt"`
 }
 
+type ChunkResumeResult struct {
+	ID                    string    `json:"id"`
+	UploadURL             string    `json:"uploadUrl"`
+	ExpiresAt             time.Time `json:"expiresAt"`
+	BlockSize             int64     `json:"blockSize"`
+	CompletedChunkIndexes []int     `json:"completedChunkIndexes"`
+}
+
 type Service struct {
 	signer    URLSigner
 	inspector BlobInspector
+	blocks    BlockInspector
 	sessions  SessionRepository
 	now       func() time.Time
 	newID     func() (string, error)
@@ -79,6 +98,11 @@ func NewService(signer URLSigner, inspector BlobInspector, sessions SessionRepos
 		now:       time.Now,
 		newID:     newID,
 	}
+}
+
+func (s *Service) WithBlockInspector(inspector BlockInspector) *Service {
+	s.blocks = inspector
+	return s
 }
 
 func (s *Service) Initiate(ctx context.Context, ownerID string, idempotencyKey string, fileName string, size int64) (InitiateResult, error) {
@@ -111,11 +135,12 @@ func (s *Service) initiate(ctx context.Context, ownerID string, idempotencyKey s
 		if existing.Status != SessionInitiated || existing.UploadMode != uploadMode || !now.Before(existing.ExpiresAt) {
 			return InitiateResult{}, ErrIdempotencyConflict
 		}
-		uploadURL, signingErr := s.generateUploadURL(uploadMode, existing.BlobName, existing.ExpiresAt)
+		sasExpiresAt := now.Add(URLLifetime)
+		uploadURL, signingErr := s.generateUploadURL(uploadMode, existing.BlobName, sasExpiresAt)
 		if signingErr != nil {
 			return InitiateResult{}, fmt.Errorf("%w: %w", ErrGenerateUploadURL, signingErr)
 		}
-		return newInitiateResult(existing.ID, existing.BlobName, uploadURL, existing.ExpiresAt, uploadMode, existing.BlockSize), nil
+		return newInitiateResult(existing.ID, existing.BlobName, uploadURL, sasExpiresAt, uploadMode, existing.BlockSize), nil
 	}
 	if !errors.Is(err, ErrSessionNotFound) {
 		return InitiateResult{}, fmt.Errorf("%w: %w", ErrGetIdempotentSession, err)
@@ -127,7 +152,8 @@ func (s *Service) initiate(ctx context.Context, ownerID string, idempotencyKey s
 	}
 
 	createdAt := now
-	expiresAt := now.Add(URLLifetime)
+	expiresAt := now.Add(SessionLifetime)
+	sasExpiresAt := now.Add(URLLifetime)
 	blobName := id + file.Extension
 	if err := s.sessions.Create(ctx, UploadSession{
 		ID:             id,
@@ -148,12 +174,62 @@ func (s *Service) initiate(ctx context.Context, ownerID string, idempotencyKey s
 		return InitiateResult{}, fmt.Errorf("%w: %w", ErrCreateSession, err)
 	}
 
-	uploadURL, err := s.generateUploadURL(uploadMode, blobName, expiresAt)
+	uploadURL, err := s.generateUploadURL(uploadMode, blobName, sasExpiresAt)
 	if err != nil {
 		return InitiateResult{}, fmt.Errorf("%w: %w", ErrGenerateUploadURL, err)
 	}
 
-	return newInitiateResult(id, blobName, uploadURL, expiresAt, uploadMode, blockSize), nil
+	return newInitiateResult(id, blobName, uploadURL, sasExpiresAt, uploadMode, blockSize), nil
+}
+
+func (s *Service) ResumeChunked(ctx context.Context, ownerID string, id string) (ChunkResumeResult, error) {
+	if ownerID == "" {
+		return ChunkResumeResult{}, ErrMissingOwner
+	}
+	if s.sessions == nil {
+		return ChunkResumeResult{}, ErrMissingRepository
+	}
+	if s.blocks == nil {
+		return ChunkResumeResult{}, ErrMissingBlockInspector
+	}
+	session, err := s.sessions.GetByID(ctx, id)
+	if err != nil {
+		return ChunkResumeResult{}, err
+	}
+	if session.OwnerID != ownerID {
+		return ChunkResumeResult{}, ErrSessionForbidden
+	}
+	if session.UploadMode != UploadModeChunked || session.Status != SessionInitiated || !s.now().UTC().Before(session.ExpiresAt) {
+		return ChunkResumeResult{}, ErrInvalidResumeState
+	}
+	blockIDs, err := s.blocks.GetUncommittedBlockIDs(ctx, session.BlobName)
+	if err != nil {
+		return ChunkResumeResult{}, err
+	}
+	completed := completedChunkIndexes(session, blockIDs)
+	expiresAt := s.now().UTC().Add(URLLifetime)
+	uploadURL, err := s.signer.GenerateBlockUploadURL(session.BlobName, expiresAt)
+	if err != nil {
+		return ChunkResumeResult{}, fmt.Errorf("%w: %w", ErrGenerateUploadURL, err)
+	}
+	return ChunkResumeResult{ID: session.ID, UploadURL: uploadURL, ExpiresAt: expiresAt, BlockSize: session.BlockSize, CompletedChunkIndexes: completed}, nil
+}
+
+func completedChunkIndexes(session UploadSession, blockIDs []string) []int {
+	maxChunks := int((session.DeclaredSize + session.BlockSize - 1) / session.BlockSize)
+	indexes := make([]int, 0, len(blockIDs))
+	prefix := session.ID + ":"
+	for _, blockID := range blockIDs {
+		decoded, err := base64.StdEncoding.DecodeString(blockID)
+		if err != nil || !strings.HasPrefix(string(decoded), prefix) {
+			continue
+		}
+		index, err := strconv.Atoi(strings.TrimPrefix(string(decoded), prefix))
+		if err == nil && index >= 0 && index < maxChunks {
+			indexes = append(indexes, index)
+		}
+	}
+	return indexes
 }
 
 func validateInitiateForMode(fileName string, size int64, uploadMode UploadMode) (FileDetails, int64, error) {

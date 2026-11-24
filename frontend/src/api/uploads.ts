@@ -88,3 +88,13 @@ export async function listUploads(): Promise<UploadSession[]> {
 
   return response.json() as Promise<UploadSession[]>
 }
+
+export type ChunkResume = { id: string; uploadUrl: string; blockSize: number; completedChunkIndexes: number[] }
+
+export async function resumeChunkedUpload(uploadId: string): Promise<ChunkResume> {
+  const token = getSessionToken()
+  if (!token) throw new UploadApiError('Your session has ended. Sign in again.', 401)
+  const response = await fetch(`/api/uploads/${uploadId}/chunks`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!response.ok) throw new UploadApiError((await response.text()) || 'Unable to resume the upload.', response.status)
+  return response.json() as Promise<ChunkResume>
+}
