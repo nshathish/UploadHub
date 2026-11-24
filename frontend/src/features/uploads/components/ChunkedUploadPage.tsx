@@ -33,6 +33,7 @@ export function ChunkedUploadPage({ file, onBack, onBackToUploads }: ChunkedUplo
             <UploadStatus file={file} state={upload.state} onCancel={upload.cancel} onReset={onBack} />
             <ChunkProgressMap chunks={chunks} />
             {isIdle && <button className="mt-5 w-full rounded-lg bg-cyan-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-600 focus:ring-offset-2" type="button" onClick={() => upload.start(file)}>Start chunked upload</button>}
+            {upload.state.phase === 'error' && upload.state.uploadId && <button className="mt-5 w-full rounded-lg bg-cyan-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-600 focus:ring-offset-2" type="button" onClick={() => upload.retry(file)}>Retry remaining chunks</button>}
             {isIdle && <button className="mt-3 w-full rounded-lg px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100" type="button" onClick={onBack}>Choose a different file</button>}
           </div>
         </section>

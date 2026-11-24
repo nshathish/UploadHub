@@ -29,7 +29,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer sessions.Close()
-	uploadService := upload.NewService(blobStorage, blobStorage, sessions)
+	uploadService := upload.NewService(blobStorage, blobStorage, sessions).WithBlockInspector(blobStorage)
 	authRepository, err := auth.NewSQLiteRepository(cfg.UploadDatabasePath)
 	if err != nil {
 		log.Fatal(err)
@@ -56,6 +56,10 @@ func main() {
 	mux.Handle(
 		"GET /api/uploads",
 		handlers.SessionAuth(authService, handlers.NewListUploadsHandler(uploadService)),
+	)
+	mux.Handle(
+		"GET /api/uploads/{id}/chunks",
+		handlers.SessionAuth(authService, handlers.NewResumeChunkedUploadHandler(uploadService)),
 	)
 	mux.Handle(
 		"GET /api/uploads/{id}",

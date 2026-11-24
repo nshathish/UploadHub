@@ -11,14 +11,22 @@ export async function uploadBlocks(
   uploadId: string,
   file: File,
   blockSize: number,
+  completedChunkIndexes: number[],
   options: ChunkedBlobUploadOptions,
 ): Promise<void> {
   const blockIds: string[] = [];
+  const completed = new Set(completedChunkIndexes);
   let uploadedBytes = 0;
 
   for (let index = 0; uploadedBytes < file.size; index += 1) {
     const end = Math.min(uploadedBytes + blockSize, file.size);
     const blockId = createBlockId(uploadId, index);
+    if (completed.has(index)) {
+      blockIds.push(blockId);
+      uploadedBytes = end;
+      options.onProgress(uploadedBytes, file.size);
+      continue;
+    }
     options.onChunkStart(index);
     try {
       await stageBlock(
