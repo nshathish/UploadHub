@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -18,8 +19,7 @@ type Config struct {
 	AzureConnectionString string
 	AzureContainerName    string
 	UploadDatabasePath    string
-	DevelopmentAuthToken  string
-	DevelopmentOwnerID    string
+	SeedDevelopmentUsers  bool
 }
 
 func Load() (Config, error) {
@@ -37,9 +37,21 @@ func Load() (Config, error) {
 		AzureConnectionString: connectionString,
 		AzureContainerName:    valueOrDefault("AZURE_STORAGE_CONTAINER", "kyc-documents"),
 		UploadDatabasePath:    valueOrDefault("UPLOAD_DATABASE_PATH", "uploadhub.db"),
-		DevelopmentAuthToken:  valueOrDefault("UPLOADHUB_DEV_AUTH_TOKEN", "local-development-token"),
-		DevelopmentOwnerID:    valueOrDefault("UPLOADHUB_DEV_OWNER_ID", "local-demo-user"),
+		SeedDevelopmentUsers:  boolOrDefault("UPLOADHUB_SEED_TEST_USERS", false),
 	}, nil
+}
+
+func boolOrDefault(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }
 
 func valueOrDefault(key, fallback string) string {

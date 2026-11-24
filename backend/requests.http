@@ -1,11 +1,29 @@
 @apiBaseUrl = http://localhost:8080
-@developmentToken = local-development-token
 @idempotencyKey = {{$uuid}}
+
+### Login as a test user
+POST {{apiBaseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "alex",
+  "password": "UploadHub-Test-2026-Alex!"
+}
+
+> {%
+if (response.status !== 200) {
+  client.log("login failed with HTTP " + response.status);
+} else {
+  const payload = typeof response.body === "string" ? JSON.parse(response.body) : response.body;
+  client.global.set("authToken", payload.token);
+  client.log("authenticated as: " + payload.user.username);
+}
+%}
 
 ### Initiate direct upload
 POST {{apiBaseUrl}}/api/uploads/initiate
 Content-Type: application/json
-Authorization: Bearer {{developmentToken}}
+Authorization: Bearer {{authToken}}
 Idempotency-Key: {{idempotencyKey}}
 
 {
@@ -16,7 +34,7 @@ Idempotency-Key: {{idempotencyKey}}
 ### Initiate chunked direct upload
 POST {{apiBaseUrl}}/api/uploads/initiate-chunked
 Content-Type: application/json
-Authorization: Bearer {{developmentToken}}
+Authorization: Bearer {{authToken}}
 Idempotency-Key: {{$uuid}}
 
 {
@@ -37,7 +55,7 @@ if (response.status !== 201) {
 ### Reject unsupported file type
 POST {{apiBaseUrl}}/api/uploads/initiate
 Content-Type: application/json
-Authorization: Bearer {{developmentToken}}
+Authorization: Bearer {{authToken}}
 Idempotency-Key: {{idempotencyKey}}
 
 {
@@ -47,8 +65,8 @@ Idempotency-Key: {{idempotencyKey}}
 
 ### Get upload status
 GET {{apiBaseUrl}}/api/uploads/{{uploadId}}
-Authorization: Bearer {{developmentToken}}
+Authorization: Bearer {{authToken}}
 
 ### Complete upload
 POST {{apiBaseUrl}}/api/uploads/{{uploadId}}/complete
-Authorization: Bearer {{developmentToken}}
+Authorization: Bearer {{authToken}}
