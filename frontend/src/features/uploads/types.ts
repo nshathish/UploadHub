@@ -17,6 +17,8 @@ export type UploadSession = {
   fileName: string
   size: number
   status: 'initiated' | 'uploading' | 'uploaded' | 'validating' | 'accepted' | 'rejected' | 'canceled' | 'expired' | 'failed'
+  uploadMode: 'single' | 'chunked'
+  createdAt: string
   expiresAt: string
 }
 

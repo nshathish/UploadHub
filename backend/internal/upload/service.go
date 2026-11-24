@@ -54,11 +54,13 @@ type InitiateResult struct {
 }
 
 type SessionResult struct {
-	ID        string        `json:"id"`
-	FileName  string        `json:"fileName"`
-	Size      int64         `json:"size"`
-	Status    SessionStatus `json:"status"`
-	ExpiresAt time.Time     `json:"expiresAt"`
+	ID         string        `json:"id"`
+	FileName   string        `json:"fileName"`
+	Size       int64         `json:"size"`
+	Status     SessionStatus `json:"status"`
+	UploadMode UploadMode    `json:"uploadMode"`
+	CreatedAt  time.Time     `json:"createdAt"`
+	ExpiresAt  time.Time     `json:"expiresAt"`
 }
 
 type Service struct {
@@ -205,6 +207,25 @@ func (s *Service) Get(ctx context.Context, ownerID string, id string) (SessionRe
 	}, nil
 }
 
+func (s *Service) List(ctx context.Context, ownerID string) ([]SessionResult, error) {
+	if ownerID == "" {
+		return nil, ErrMissingOwner
+	}
+	if s.sessions == nil {
+		return nil, ErrMissingRepository
+	}
+	sessions, err := s.sessions.ListByOwner(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]SessionResult, 0, len(sessions))
+	for _, session := range sessions {
+		results = append(results, sessionResult(session))
+	}
+
+	return results, nil
+}
+
 func (s *Service) Complete(ctx context.Context, ownerID string, id string) (SessionResult, error) {
 	if ownerID == "" {
 		return SessionResult{}, ErrMissingOwner
@@ -268,11 +289,13 @@ func (s *Service) Complete(ctx context.Context, ownerID string, id string) (Sess
 
 func sessionResult(session UploadSession) SessionResult {
 	return SessionResult{
-		ID:        session.ID,
-		FileName:  session.DisplayName,
-		Size:      session.DeclaredSize,
-		Status:    session.Status,
-		ExpiresAt: session.ExpiresAt,
+		ID:         session.ID,
+		FileName:   session.DisplayName,
+		Size:       session.DeclaredSize,
+		Status:     session.Status,
+		UploadMode: session.UploadMode,
+		CreatedAt:  session.CreatedAt,
+		ExpiresAt:  session.ExpiresAt,
 	}
 }
 

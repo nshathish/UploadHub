@@ -45,6 +45,16 @@ func (f *fakeSessionRepository) GetByID(_ context.Context, _ string) (UploadSess
 	return f.byID, nil
 }
 
+func (f *fakeSessionRepository) ListByOwner(_ context.Context, ownerID string) ([]UploadSession, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.byID.ID == "" || f.byID.OwnerID != ownerID {
+		return []UploadSession{}, nil
+	}
+	return []UploadSession{f.byID}, nil
+}
+
 func (f *fakeSessionRepository) GetByIdempotencyKey(_ context.Context, _ string, _ string) (UploadSession, error) {
 	if f.err != nil {
 		return UploadSession{}, f.err
@@ -186,6 +196,19 @@ func TestServiceGetRejectsAnotherOwner(t *testing.T) {
 	_, err := service.Get(context.Background(), "demo-user", "upload-id")
 	if !errors.Is(err, ErrSessionForbidden) {
 		t.Fatalf("Get() error = %v, want %v", err, ErrSessionForbidden)
+	}
+}
+
+func TestServiceListReturnsOnlyOwnerUploads(t *testing.T) {
+	session := validSession()
+	service := NewService(&fakeSigner{}, &fakeBlobInspector{}, &fakeSessionRepository{byID: session})
+
+	results, err := service.List(context.Background(), session.OwnerID)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(results) != 1 || results[0].ID != session.ID || results[0].CreatedAt != session.CreatedAt {
+		t.Fatalf("List() results = %#v", results)
 	}
 }
 

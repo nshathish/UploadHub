@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/nshathish/uploadhub/backend/internal/auth"
 	"github.com/nshathish/uploadhub/backend/internal/config"
 	"github.com/nshathish/uploadhub/backend/internal/handlers"
 	"github.com/nshathish/uploadhub/backend/internal/storage"
@@ -28,39 +30,40 @@ func main() {
 	}
 	defer sessions.Close()
 	uploadService := upload.NewService(blobStorage, blobStorage, sessions)
+	authRepository, err := auth.NewSQLiteRepository(cfg.UploadDatabasePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer authRepository.Close()
+	authService := auth.NewService(authRepository)
+	if cfg.SeedDevelopmentUsers {
+		if err := auth.SeedDevelopmentUsers(context.Background(), authService); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	mux := http.NewServeMux()
+	mux.Handle("POST /api/auth/login", handlers.NewLoginHandler(authService))
+	mux.Handle("POST /api/auth/logout", handlers.NewLogoutHandler(authService))
 	mux.Handle(
 		"POST /api/uploads/initiate",
-		handlers.DevelopmentAuth(
-			cfg.DevelopmentAuthToken,
-			cfg.DevelopmentOwnerID,
-			handlers.NewInitiateUploadHandler(uploadService),
-		),
+		handlers.SessionAuth(authService, handlers.NewInitiateUploadHandler(uploadService)),
 	)
 	mux.Handle(
 		"POST /api/uploads/initiate-chunked",
-		handlers.DevelopmentAuth(
-			cfg.DevelopmentAuthToken,
-			cfg.DevelopmentOwnerID,
-			handlers.NewInitiateChunkedUploadHandler(uploadService),
-		),
+		handlers.SessionAuth(authService, handlers.NewInitiateChunkedUploadHandler(uploadService)),
+	)
+	mux.Handle(
+		"GET /api/uploads",
+		handlers.SessionAuth(authService, handlers.NewListUploadsHandler(uploadService)),
 	)
 	mux.Handle(
 		"GET /api/uploads/{id}",
-		handlers.DevelopmentAuth(
-			cfg.DevelopmentAuthToken,
-			cfg.DevelopmentOwnerID,
-			handlers.NewGetUploadHandler(uploadService),
-		),
+		handlers.SessionAuth(authService, handlers.NewGetUploadHandler(uploadService)),
 	)
 	mux.Handle(
 		"POST /api/uploads/{id}/complete",
-		handlers.DevelopmentAuth(
-			cfg.DevelopmentAuthToken,
-			cfg.DevelopmentOwnerID,
-			handlers.NewCompleteUploadHandler(uploadService),
-		),
+		handlers.SessionAuth(authService, handlers.NewCompleteUploadHandler(uploadService)),
 	)
 
 	server := &http.Server{
