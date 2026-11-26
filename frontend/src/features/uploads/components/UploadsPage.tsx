@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { listUploads } from '@/api/uploads'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -6,13 +6,16 @@ import type { UploadSession } from '@/features/uploads/types'
 
 type UploadsPageProps = {
   onNewUpload: () => void
+  onResumeUpload: (upload: UploadSession, file: File) => void
 }
 
-export function UploadsPage({ onNewUpload }: UploadsPageProps) {
+export function UploadsPage({ onNewUpload, onResumeUpload }: UploadsPageProps) {
   const { session, signOut } = useAuth()
   const [uploads, setUploads] = useState<UploadSession[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [resumeUpload, setResumeUpload] = useState<UploadSession | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let isCurrent = true
@@ -35,6 +38,15 @@ export function UploadsPage({ onNewUpload }: UploadsPageProps) {
     return () => { isCurrent = false }
   }, [])
 
+  function selectResumeFile(file: File) {
+    if (!resumeUpload) return
+    if (file.name !== resumeUpload.fileName || file.size !== resumeUpload.size) {
+      setError('Choose the original file with the same name and size to resume this upload.')
+      return
+    }
+    onResumeUpload(resumeUpload, file)
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
@@ -47,7 +59,8 @@ export function UploadsPage({ onNewUpload }: UploadsPageProps) {
           {isLoading && <p className="mt-10 text-sm text-slate-600">Loading uploads…</p>}
           {error && <p className="mt-8 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-900">{error}</p>}
           {!isLoading && !error && uploads.length === 0 && <div className="mt-10 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><p className="font-semibold text-slate-900">No uploads yet</p><p className="mt-2 text-sm leading-6 text-slate-600">Start a new upload to send your first verification document.</p></div>}
-          {!isLoading && !error && uploads.length > 0 && <ul className="mt-8 divide-y divide-slate-200 rounded-2xl border border-slate-200">{uploads.map((upload) => <li key={upload.id} className="flex flex-wrap items-center justify-between gap-4 p-5"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{upload.fileName}</p><p className="mt-1 text-sm text-slate-500">{formatFileSize(upload.size)} · {formatDate(upload.createdAt)} · {upload.uploadMode} upload</p></div><StatusBadge status={upload.status} /></li>)}</ul>}
+          <input ref={inputRef} className="sr-only" type="file" accept="application/pdf,image/jpeg,image/png" onChange={(event) => { const [file] = Array.from(event.target.files ?? []); if (file) selectResumeFile(file); event.target.value = '' }} />
+          {!isLoading && uploads.length > 0 && <ul className="mt-8 divide-y divide-slate-200 rounded-2xl border border-slate-200">{uploads.map((upload) => <li key={upload.id} className="flex flex-wrap items-center justify-between gap-4 p-5"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{upload.fileName}</p><p className="mt-1 text-sm text-slate-500">{formatFileSize(upload.size)} · {formatDate(upload.createdAt)} · {upload.uploadMode} upload</p></div><div className="flex items-center gap-3"><StatusBadge status={upload.status} />{upload.status === 'initiated' && upload.uploadMode === 'chunked' && <button className="rounded-lg border border-cyan-700 px-3 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50" type="button" onClick={() => { setResumeUpload(upload); inputRef.current?.click() }}>Resume upload</button>}</div></li>)}</ul>}
         </section>
       </div>
     </main>

@@ -19,6 +19,10 @@ export function useChunkedUpload() {
     await upload(file, state.uploadId);
   }
 
+  async function resume(file: File, uploadId: string) {
+    await upload(file, uploadId);
+  }
+
   async function upload(file: File, retryUploadId?: string) {
     const controller = new AbortController();
     let uploadID = retryUploadId;
@@ -92,7 +96,7 @@ export function useChunkedUpload() {
     setState({ phase: 'idle' });
   }
 
-  return { cancel, chunks, reset, retry, start, state };
+  return { cancel, chunks, reset, resume, retry, start, state };
 }
 
 function updateChunk(

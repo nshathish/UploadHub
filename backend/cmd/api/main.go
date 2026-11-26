@@ -29,12 +29,14 @@ func main() {
 		log.Fatal(err)
 	}
 	defer sessions.Close()
+
 	uploadService := upload.NewService(blobStorage, blobStorage, sessions).WithBlockInspector(blobStorage)
 	authRepository, err := auth.NewSQLiteRepository(cfg.UploadDatabasePath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer authRepository.Close()
+
 	authService := auth.NewService(authRepository)
 	if cfg.SeedDevelopmentUsers {
 		if err := auth.SeedDevelopmentUsers(context.Background(), authService); err != nil {
